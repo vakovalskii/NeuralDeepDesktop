@@ -1,0 +1,15 @@
+# Build artifacts
+/src-tauri/target/
+/src-tauri/bin/
+/dist-react/
+/dist-sidecar/
+node_modules/
+.DS_Store
+
+# App-data / provisioned harness (never committed)
+/.hermes/
+/.neuraldeep/
+
+# Secrets
+.env
+*.local
