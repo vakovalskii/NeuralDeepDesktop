@@ -5,6 +5,7 @@ import {
   type Health, type AgentInfo, type Subscription, type SessionRow,
 } from "./transport";
 import { Md } from "./Md";
+import { Icon } from "./Icon";
 
 const PIN_KEY = "nd.pinnedSessions";
 const loadPins = (): string[] => {
@@ -26,11 +27,11 @@ interface Msg {
 const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
 
 const SUGGESTIONS = [
-  { icon: "✅", label: "Проверить free-тариф", prompt: "Reply with exactly: NEURALDEEP_FREE_TIER_OK" },
-  { icon: "💭", label: "Показать reasoning (17×23)", prompt: "Сколько будет 17*23? Думай пошагово, потом ответь." },
-  { icon: "🧩", label: "Что ты умеешь?", prompt: "Кратко: кто ты, какая модель отвечает и какие у тебя возможности?" },
-  { icon: "🎨", label: "Сгенерить картинку", prompt: "/img green neon ND logo on pure black, minimal" },
-];
+  { icon: "check", label: "Проверить free-тариф", prompt: "Reply with exactly: NEURALDEEP_FREE_TIER_OK" },
+  { icon: "brain", label: "Показать reasoning (17×23)", prompt: "Сколько будет 17*23? Думай пошагово, потом ответь." },
+  { icon: "puzzle", label: "Что ты умеешь?", prompt: "Кратко: кто ты, какая модель отвечает и какие у тебя возможности?" },
+  { icon: "image", label: "Сгенерить картинку", prompt: "/img green neon ND logo on pure black, minimal" },
+] as const;
 
 export function App() {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -103,13 +104,13 @@ export function App() {
     setMessages((prev) => [
       ...prev,
       { role: "user", content: prompt },
-      { role: "assistant", content: `🎨 Генерирую: «${clean}»…`, pending: true },
+      { role: "assistant", content: `Генерирую изображение: «${clean}»…`, pending: true },
     ]);
     try {
       const url = await generateImage(clean);
       patchLast((m) => ({ ...m, content: "", image: url, pending: false }));
     } catch (e: any) {
-      patchLast((m) => ({ ...m, content: `⚠️ ${e?.message ?? e}`, pending: false }));
+      patchLast((m) => ({ ...m, content: `Ошибка: ${e?.message ?? e}`, pending: false }));
     } finally {
       setBusy(false);
     }
@@ -141,10 +142,10 @@ export function App() {
             return { ...m, tools };
           }),
         onDone: (usage) => patchLast((m) => ({ ...m, usage, pending: false })),
-        onError: (message) => patchLast((m) => ({ ...m, content: m.content || `⚠️ ${message}`, pending: false })),
+        onError: (message) => patchLast((m) => ({ ...m, content: m.content || `Ошибка: ${message}`, pending: false })),
       });
     } catch (e: any) {
-      patchLast((m) => ({ ...m, content: `⚠️ ${e?.message ?? e}`, pending: false }));
+      patchLast((m) => ({ ...m, content: `Ошибка: ${e?.message ?? e}`, pending: false }));
     } finally {
       patchLast((m) => ({ ...m, pending: false }));
       setBusy(false);
@@ -169,10 +170,10 @@ export function App() {
       />
       <div className="composer-row">
         <button className="composer-hint" onClick={changeFolder} disabled={!isTauri} title="Сменить рабочую папку агента">
-          📁 {workspace ?? (isTauri ? "…" : "n/a")}
+          <Icon name="folder" size={15} /> {workspace ?? (isTauri ? "…" : "n/a")}
         </button>
         <button className="send" onClick={() => send(input)} disabled={!online || !input.trim() || busy}>
-          {busy ? "…" : "↑"}
+          {busy ? <span className="spinner" /> : <Icon name="send" size={18} />}
         </button>
       </div>
     </div>
@@ -186,7 +187,7 @@ export function App() {
           <span className="logo">ND</span>
           <span className="wordmark">neuraldeep</span>
         </div>
-        <button className="new-chat" onClick={newChat}>＋ Новый чат</button>
+        <button className="new-chat" onClick={newChat}><Icon name="plus" size={16} /> Новый чат</button>
         <div className="side-section">Недавние</div>
         <div className="recents">
           {sessions.length === 0 && <div className="recents-empty">пусто</div>}
@@ -202,7 +203,7 @@ export function App() {
                 <span className="recent-dot" data-src={s.source} />
                 <span className="recent-title">{s.title || s.id.slice(0, 22)}</span>
                 <button className="pin-btn" onClick={(e) => togglePin(s.id, e)} title={pinned ? "Открепить" : "Закрепить"}>
-                  {pinned ? "📌" : "📍"}
+                  <Icon name={pinned ? "pin" : "pinOff"} size={14} fill={pinned} />
                 </button>
               </div>
             );
@@ -231,13 +232,13 @@ export function App() {
 
         {!hasChat ? (
           <div className="hero">
-            <div className="hero-spark">✳</div>
+            <div className="hero-spark"><Icon name="spark" size={30} /></div>
             <h1>Чем займёмся сегодня?</h1>
             <div className="hero-composer">{composer(true)}</div>
             <div className="suggestions">
               {SUGGESTIONS.map((s, i) => (
                 <button key={i} className="suggestion" onClick={() => send(s.prompt)} disabled={!online}>
-                  <span className="sug-icon">{s.icon}</span>
+                  <span className="sug-icon"><Icon name={s.icon} size={18} /></span>
                   <span className="sug-label">{s.label}</span>
                 </button>
               ))}
@@ -253,13 +254,13 @@ export function App() {
                     {m.role === "assistant" && m.tools && m.tools.length > 0 && (
                       <div className="tools">
                         {m.tools.map((t, j) => (
-                          <span key={j} className={`tool ${t.status}`}>🔧 {t.name} · {t.status}</span>
+                          <span key={j} className={`tool ${t.status}`}><Icon name="tool" size={13} /> {t.name} · {t.status}</span>
                         ))}
                       </div>
                     )}
                     {m.role === "assistant" && m.reasoning && showReasoning && (
                       <details className="reasoning" open>
-                        <summary>💭 reasoning</summary>
+                        <summary><Icon name="brain" size={14} /> reasoning</summary>
                         <div className="reasoning-body">{m.reasoning}</div>
                       </details>
                     )}
