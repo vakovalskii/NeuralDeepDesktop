@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getHealth, getAgentInfo, getSubscription, getSessions, getSessionMessages,
-  ensureSession, streamChat, pickWorkspace, isTauri,
+  ensureSession, streamChat, pickWorkspace, generateImage, isTauri,
   type Health, type AgentInfo, type Subscription, type SessionRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -20,6 +20,7 @@ interface Msg {
   tools?: Tool[];
   usage?: any;
   pending?: boolean;
+  image?: string;
 }
 
 const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
@@ -28,6 +29,7 @@ const SUGGESTIONS = [
   { icon: "✅", label: "Проверить free-тариф", prompt: "Reply with exactly: NEURALDEEP_FREE_TIER_OK" },
   { icon: "💭", label: "Показать reasoning (17×23)", prompt: "Сколько будет 17*23? Думай пошагово, потом ответь." },
   { icon: "🧩", label: "Что ты умеешь?", prompt: "Кратко: кто ты, какая модель отвечает и какие у тебя возможности?" },
+  { icon: "🎨", label: "Сгенерить картинку", prompt: "/img green neon ND logo on pure black, minimal" },
 ];
 
 export function App() {
@@ -93,9 +95,30 @@ export function App() {
     setMessages(msgs.map((m) => ({ role: m.role, content: m.content })));
   }
 
+  const IMG_RE = /^\/(img|image|картинка)\s+/i;
+
+  async function imageGen(prompt: string, clean: string) {
+    setInput("");
+    setBusy(true);
+    setMessages((prev) => [
+      ...prev,
+      { role: "user", content: prompt },
+      { role: "assistant", content: `🎨 Генерирую: «${clean}»…`, pending: true },
+    ]);
+    try {
+      const url = await generateImage(clean);
+      patchLast((m) => ({ ...m, content: "", image: url, pending: false }));
+    } catch (e: any) {
+      patchLast((m) => ({ ...m, content: `⚠️ ${e?.message ?? e}`, pending: false }));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function send(text: string) {
     const prompt = text.trim();
     if (!prompt || busy) return;
+    if (IMG_RE.test(prompt)) return imageGen(prompt, prompt.replace(IMG_RE, "").trim());
     setInput("");
     setBusy(true);
     setMessages((prev) => [
@@ -137,7 +160,7 @@ export function App() {
     <div className={`composer ${big ? "big" : ""}`}>
       <textarea
         value={input}
-        placeholder={online ? "Спроси Hermes…  / для скиллов" : "Ожидание бэкенда…"}
+        placeholder={online ? "Спроси Hermes…  /img <промпт> — картинка" : "Ожидание бэкенда…"}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
@@ -241,7 +264,11 @@ export function App() {
                       </details>
                     )}
                     <div className="bubble">
-                      {m.role === "assistant"
+                      {m.image ? (
+                        <a href={m.image} download="neuraldeep.png" className="gen-img-link">
+                          <img className="gen-img" src={m.image} alt="generated" />
+                        </a>
+                      ) : m.role === "assistant"
                         ? (m.pending
                             ? (m.content ? <>{m.content}<span className="cursor">▋</span></> : <span className="cursor">▋</span>)
                             : (m.content ? <Md>{m.content}</Md> : ""))

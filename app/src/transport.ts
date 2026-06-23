@@ -51,6 +51,12 @@ export async function pickWorkspace(): Promise<string | null> {
   return null;
 }
 
+/** Generate an image via the hub Image API (FLUX). Returns a data: URL. Tauri-only. */
+export async function generateImage(prompt: string, aspect = "1:1"): Promise<string> {
+  if (!isTauri) throw new Error("генерация картинок доступна только в десктоп-приложении");
+  return (await (await core()).invoke("generate_image", { prompt, aspect })) as string;
+}
+
 export async function getAgentInfo(): Promise<AgentInfo | null> {
   try {
     if (isTauri) return (await (await core()).invoke("agent_info")) as AgentInfo;

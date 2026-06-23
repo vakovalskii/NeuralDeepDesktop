@@ -142,3 +142,14 @@ body { background: var(--bg); color: var(--text); -webkit-font-smoothing: antial
 .md th, .md td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
 .md th { background: var(--panel-2); font-weight: 600; }
 .md hr { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
+
+/* generated images */
+.gen-img {
+  max-width: 420px;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  display: block;
+}
+.gen-img-link { display: inline-block; line-height: 0; }
+.gen-img-link:hover .gen-img { border-color: var(--green-bright); }

@@ -17,6 +17,7 @@ use tauri::{Manager, State};
 
 const HERMES_BASE: &str = "http://127.0.0.1:8642";
 const HUB_STATUS: &str = "https://hub.neuraldeep.ru/api/cli/status";
+const HUB_IMG: &str = "https://api.neuraldeep.ru/v1/images";
 
 #[derive(Default)]
 struct Backend {
@@ -233,6 +234,72 @@ async fn subscription(config: State<'_, Config>) -> Result<serde_json::Value, St
     }))
 }
 
+/// Generate an image via the hub Image API (FLUX, async: submit → poll → result).
+/// Returns a `data:image/png;base64,…` URL.
+#[tauri::command]
+async fn generate_image(
+    prompt: String,
+    aspect: Option<String>,
+    config: State<'_, Config>,
+) -> Result<String, String> {
+    use base64::Engine;
+    let key = config.hub_key.clone();
+    if key.is_empty() {
+        return Err("no hub key".into());
+    }
+    let client = reqwest::Client::new();
+    let bearer = format!("Bearer {key}");
+
+    // 1. submit
+    let submit = client
+        .post(format!("{HUB_IMG}/generate"))
+        .header("Authorization", &bearer)
+        .json(&serde_json::json!({
+            "prompt": prompt,
+            "options": { "aspect_ratio": aspect.unwrap_or_else(|| "1:1".into()) },
+        }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let sj: serde_json::Value = submit.json().await.map_err(|e| e.to_string())?;
+    let uid = sj["task_uid"]
+        .as_str()
+        .ok_or_else(|| format!("no task_uid: {sj}"))?
+        .to_string();
+
+    // 2. poll (up to ~90s)
+    for _ in 0..30 {
+        tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        let st = client
+            .get(format!("{HUB_IMG}/tasks/{uid}"))
+            .header("Authorization", &bearer)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json::<serde_json::Value>()
+            .await
+            .map_err(|e| e.to_string())?;
+        match st["status"].as_str().unwrap_or("") {
+            "finished" => break,
+            "failed" | "error" => return Err(format!("image task failed: {st}")),
+            _ => continue,
+        }
+    }
+
+    // 3. result (binary)
+    let bytes = client
+        .get(format!("{HUB_IMG}/tasks/{uid}/result"))
+        .header("Authorization", &bearer)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .bytes()
+        .await
+        .map_err(|e| e.to_string())?;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+    Ok(format!("data:image/png;base64,{b64}"))
+}
+
 #[tauri::command]
 async fn create_session(config: State<'_, Config>) -> Result<String, String> {
     let resp = reqwest::Client::new()
@@ -384,6 +451,7 @@ pub fn run() {
             agent_info,
             subscription,
             pick_workspace,
+            generate_image,
             create_session,
             chat_stream
         ])
