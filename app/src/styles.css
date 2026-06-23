@@ -206,3 +206,55 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .gen-img { max-width: 420px; width: 100%; border-radius: 12px; border: 1px solid var(--border); display: block; box-shadow: var(--sh-3); transition: border-color .15s, box-shadow .15s; }
 .gen-img-link { display: inline-block; line-height: 0; }
 .gen-img-link:hover .gen-img { border-color: var(--green-bright); box-shadow: var(--glow), var(--sh-3); }
+
+/* ───────── In-chat command menu ───────── */
+.composer { position: relative; }
+.cmd-menu {
+  position: absolute; left: 8px; right: 8px; bottom: calc(100% + 8px);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border-2); border-radius: 12px; padding: 5px;
+  box-shadow: var(--hi), var(--sh-3); z-index: 30; max-height: 320px; overflow-y: auto;
+  backdrop-filter: blur(8px);
+}
+.cmd-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted-2); padding: 4px 8px 6px; }
+.cmd-item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; background: none;
+  border: none; color: var(--text); padding: 8px 8px; border-radius: 8px; cursor: pointer;
+  font-family: inherit; font-size: 13px;
+}
+.cmd-item:hover, .cmd-item:focus-visible { background: rgba(0,122,61,.16); color: var(--green-bright); outline: none; }
+.cmd-item svg { color: var(--green-bright); }
+.cmd-name { font-family: ui-monospace, Menlo, monospace; font-weight: 600; }
+.cmd-hint { color: var(--muted-2); font-size: 11.5px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+
+/* ───────── Right diff panel ───────── */
+.diff-panel {
+  width: 380px; flex-shrink: 0; background: linear-gradient(180deg, #0a0c0f, var(--side));
+  border-left: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0;
+  box-shadow: -14px 0 40px -24px rgba(0,0,0,.9);
+}
+.diff-panel.collapsed { width: 220px; }
+.diff-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px; border-bottom: 1px solid var(--border); }
+.diff-toggle, .diff-refresh { background: none; border: none; color: var(--muted-2); cursor: pointer; display: grid; place-items: center; padding: 2px; }
+.diff-toggle:hover, .diff-refresh:hover { color: var(--green-bright); }
+.diff-toggle svg { transition: transform .15s ease; }
+.diff-toggle svg.rot { transform: rotate(90deg); }
+.diff-title { font-size: 13px; font-weight: 700; }
+.diff-count { font-size: 11px; font-weight: 700; color: var(--green-bright); background: var(--green-dim); border-radius: 999px; padding: 1px 8px; }
+.diff-refresh { margin-left: auto; }
+.diff-body { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.diff-file { background: var(--panel); border: 1px solid var(--border); border-radius: 9px; overflow: hidden; box-shadow: var(--hi); }
+.diff-file > summary { display: flex; align-items: center; gap: 8px; cursor: pointer; padding: 8px 10px; list-style: none; user-select: none; }
+.diff-file > summary::-webkit-details-marker { display: none; }
+.diff-status { width: 16px; height: 16px; flex-shrink: 0; display: grid; place-items: center; border-radius: 4px; font-size: 10px; font-weight: 800; }
+.diff-status.s-M { background: #3a2f0a; color: #e0b840; }
+.diff-status.s-A { background: var(--green-dim); color: var(--green-bright); }
+.diff-status.s-D { background: #3a1118; color: #e0738a; }
+.diff-status.s-R { background: #122a3a; color: #5ab0e0; }
+.diff-path { font-size: 12px; font-family: ui-monospace, Menlo, monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; direction: rtl; text-align: left; }
+.diff-pre { margin: 0; padding: 6px 0; background: #05070a; border-top: 1px solid var(--border); overflow-x: auto; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 11.5px; line-height: 1.5; }
+.dl { padding: 0 10px; white-space: pre; }
+.dl.add { background: rgba(0,122,61,.14); color: #9fe6bd; }
+.dl.del { background: rgba(160,40,60,.14); color: #e8a3b1; }
+.dl.hunk { color: #5ab0e0; background: rgba(90,176,224,.08); }
+.dl.ctx { color: var(--muted); }

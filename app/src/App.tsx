@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getHealth, getAgentInfo, getSubscription, getSessions, getSessionMessages,
-  ensureSession, streamChat, pickWorkspace, generateImage, isTauri,
-  type Health, type AgentInfo, type Subscription, type SessionRow,
+  ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills, isTauri,
+  type Health, type AgentInfo, type Subscription, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
 import { Icon } from "./Icon";
@@ -26,11 +26,31 @@ interface Msg {
 
 const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
 
+// Render a unified-diff patch with per-line coloring.
+function Patch({ text }: { text: string }) {
+  const lines = text.split("\n").filter(
+    (l) => !/^(diff --git|index |--- |\+\+\+ |new file mode|deleted file mode)/.test(l)
+  );
+  return (
+    <pre className="diff-pre">
+      {lines.map((l, i) => {
+        const cls = l.startsWith("@@") ? "hunk" : l.startsWith("+") ? "add" : l.startsWith("-") ? "del" : "ctx";
+        return <div key={i} className={`dl ${cls}`}>{l || " "}</div>;
+      })}
+    </pre>
+  );
+}
+
 const SUGGESTIONS = [
   { icon: "check", label: "Проверить free-тариф", prompt: "Reply with exactly: NEURALDEEP_FREE_TIER_OK" },
   { icon: "brain", label: "Показать reasoning (17×23)", prompt: "Сколько будет 17*23? Думай пошагово, потом ответь." },
   { icon: "puzzle", label: "Что ты умеешь?", prompt: "Кратко: кто ты, какая модель отвечает и какие у тебя возможности?" },
   { icon: "image", label: "Сгенерить картинку", prompt: "/img green neon ND logo on pure black, minimal" },
+] as const;
+
+// Local slash-commands (merged with Hermes skills in the in-chat menu).
+const LOCAL_CMDS = [
+  { name: "img", icon: "image", hint: "сгенерировать картинку — /img <промпт>" },
 ] as const;
 
 export function App() {
@@ -43,8 +63,12 @@ export function App() {
   const [showReasoning, setShowReasoning] = useState(true);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [pins, setPins] = useState<string[]>(loadPins);
+  const [skills, setSkills] = useState<SkillRow[]>([]);
+  const [diffs, setDiffs] = useState<DiffFile[]>([]);
+  const [diffOpen, setDiffOpen] = useState(true);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshSessions = () => getSessions().then((s) => setSessions(s.slice(0, 40)));
 
@@ -66,10 +90,30 @@ export function App() {
     getHealth().then(setHealth);
     getAgentInfo().then(setAgent);
     getSubscription().then(setSub);
+    getSkills().then(setSkills);
+    getWorkspaceDiff().then(setDiffs);
     refreshSessions();
     const id = setInterval(() => getHealth().then(setHealth), 5000);
     return () => clearInterval(id);
   }, []);
+
+  const refreshDiff = () => getWorkspaceDiff().then(setDiffs);
+
+  // in-chat command menu: active when input is exactly "/word" (no space yet)
+  const slashMatch = /^\/([\p{L}\w-]*)$/u.exec(input);
+  const cmdItems = slashMatch
+    ? [
+        ...LOCAL_CMDS.map((c) => ({ name: c.name, icon: "image" as const, hint: c.hint })),
+        ...skills.map((s) => ({ name: s.name, icon: "puzzle" as const, hint: s.description || s.label || "скилл Hermes" })),
+      ]
+        .filter((c) => c.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
+        .slice(0, 8)
+    : [];
+
+  function pickCmd(name: string) {
+    setInput(`/${name} `);
+    inputRef.current?.focus();
+  }
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -150,6 +194,7 @@ export function App() {
       patchLast((m) => ({ ...m, pending: false }));
       setBusy(false);
       refreshSessions();
+      refreshDiff();
     }
   }
 
@@ -159,12 +204,31 @@ export function App() {
 
   const composer = (big: boolean) => (
     <div className={`composer ${big ? "big" : ""}`}>
+      {cmdItems.length > 0 && (
+        <div className="cmd-menu">
+          <div className="cmd-head">Команды</div>
+          {cmdItems.map((c) => (
+            <button
+              key={c.name}
+              className="cmd-item"
+              onMouseDown={(e) => { e.preventDefault(); pickCmd(c.name); }}
+            >
+              <Icon name={c.icon} size={15} />
+              <span className="cmd-name">/{c.name}</span>
+              <span className="cmd-hint">{c.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <textarea
+        ref={inputRef}
         value={input}
-        placeholder={online ? "Спроси Hermes…  /img <промпт> — картинка" : "Ожидание бэкенда…"}
+        placeholder={online ? "Спроси Hermes…  «/» — команды и скиллы" : "Ожидание бэкенда…"}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); }
+          if (e.key === "Enter" && !e.shiftKey && cmdItems.length === 0) { e.preventDefault(); send(input); }
+          else if (e.key === "Enter" && !e.shiftKey && cmdItems.length > 0) { e.preventDefault(); pickCmd(cmdItems[0].name); }
+          else if (e.key === "Escape") { (e.target as HTMLTextAreaElement).blur(); }
         }}
         rows={big ? 2 : 1}
       />
@@ -286,6 +350,33 @@ export function App() {
           </>
         )}
       </main>
+
+      {/* Right: workspace diff (when the agent changed files) */}
+      {diffs.length > 0 && (
+        <aside className={`diff-panel ${diffOpen ? "" : "collapsed"}`}>
+          <div className="diff-head">
+            <button className="diff-toggle" onClick={() => setDiffOpen((v) => !v)} title={diffOpen ? "Свернуть" : "Развернуть"}>
+              <Icon name="chevron" size={14} className={diffOpen ? "rot" : ""} />
+            </button>
+            <span className="diff-title">Изменения</span>
+            <span className="diff-count">{diffs.length}</span>
+            <button className="diff-refresh" onClick={refreshDiff} title="Обновить дифф"><Icon name="search" size={14} /></button>
+          </div>
+          {diffOpen && (
+            <div className="diff-body">
+              {diffs.map((d) => (
+                <details key={d.path} className="diff-file" open={diffs.length <= 3}>
+                  <summary>
+                    <span className={`diff-status s-${d.status[0]}`}>{d.status[0]}</span>
+                    <span className="diff-path">{d.path}</span>
+                  </summary>
+                  <Patch text={d.patch} />
+                </details>
+              ))}
+            </div>
+          )}
+        </aside>
+      )}
     </div>
   );
 }

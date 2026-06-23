@@ -194,6 +194,66 @@ fn persist_workspace_to_config(dir: &str) {
     }
 }
 
+#[derive(Serialize)]
+struct DiffFile {
+    path: String,
+    status: String,
+    patch: String,
+}
+
+/// Unified diff of the agent's working dir (tracked changes + untracked files).
+/// Empty when the dir isn't a git repo or there's nothing to show.
+#[tauri::command]
+fn workspace_diff(ws: State<'_, WorkspaceState>) -> Result<Vec<DiffFile>, String> {
+    let dir = ws.0.lock().unwrap().clone();
+    let git = |args: &[&str]| -> Option<String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&dir)
+            .args(args)
+            .output()
+            .ok()?;
+        out.status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+    // git repo?
+    if git(&["rev-parse", "--is-inside-work-tree"]).map(|s| s.trim().to_string())
+        != Some("true".into())
+    {
+        return Ok(vec![]);
+    }
+    let mut files = Vec::new();
+    // tracked changes
+    if let Some(names) = git(&["diff", "--name-status"]) {
+        for line in names.lines() {
+            let mut it = line.split_whitespace();
+            let status = it.next().unwrap_or("M").to_string();
+            let Some(path) = it.next() else { continue };
+            let patch = git(&["diff", "--no-color", "--", path]).unwrap_or_default();
+            files.push(DiffFile { path: path.into(), status, patch });
+        }
+    }
+    // untracked → render as additions
+    if let Some(list) = git(&["ls-files", "--others", "--exclude-standard"]) {
+        for path in list.lines().filter(|p| !p.is_empty()) {
+            let content =
+                std::fs::read_to_string(std::path::Path::new(&dir).join(path)).unwrap_or_default();
+            let body: String = content
+                .lines()
+                .take(500)
+                .map(|l| format!("+{l}\n"))
+                .collect();
+            files.push(DiffFile {
+                path: path.into(),
+                status: "A".into(),
+                patch: format!("@@ new file @@\n{body}"),
+            });
+        }
+    }
+    Ok(files)
+}
+
 /// Open a native folder picker and set the agent working directory.
 #[tauri::command]
 async fn pick_workspace(ws: State<'_, WorkspaceState>) -> Result<Option<String>, String> {
@@ -451,6 +511,7 @@ pub fn run() {
             agent_info,
             subscription,
             pick_workspace,
+            workspace_diff,
             generate_image,
             create_session,
             chat_stream

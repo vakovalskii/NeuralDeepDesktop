@@ -57,6 +57,29 @@ export async function generateImage(prompt: string, aspect = "1:1"): Promise<str
   return (await (await core()).invoke("generate_image", { prompt, aspect })) as string;
 }
 
+export interface DiffFile { path: string; status: string; patch: string }
+
+/** Unified diff of the agent working dir (git). Empty if not a repo / no changes. Tauri-only. */
+export async function getWorkspaceDiff(): Promise<DiffFile[]> {
+  try {
+    if (isTauri) return (await (await core()).invoke("workspace_diff")) as DiffFile[];
+  } catch { /* not a repo / no git */ }
+  return [];
+}
+
+export interface SkillRow { name: string; label?: string; description?: string }
+
+/** Hermes skills (for the in-chat command menu). */
+export async function getSkills(): Promise<SkillRow[]> {
+  try {
+    const r = await hermesGet("/v1/skills");
+    const data = (r?.data ?? r ?? []) as any[];
+    return data.map((s) => ({ name: s.name ?? s.id, label: s.label, description: s.description }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getAgentInfo(): Promise<AgentInfo | null> {
   try {
     if (isTauri) return (await (await core()).invoke("agent_info")) as AgentInfo;
