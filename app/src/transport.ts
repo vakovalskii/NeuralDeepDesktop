@@ -9,6 +9,8 @@ export interface Health {
 export interface AgentInfo {
   workspace: string;
   home: string;
+  auto_accept?: boolean;
+  sandboxed?: boolean;
 }
 export interface Subscription {
   tier?: string;
@@ -17,6 +19,8 @@ export interface Subscription {
   rpm?: number;
   parallel?: number;
   models?: number;
+  model?: string;
+  ctx?: number;
 }
 export interface RichHandlers {
   onDelta: (s: string) => void;

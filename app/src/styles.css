@@ -258,3 +258,23 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .dl.del { background: rgba(160,40,60,.14); color: #e8a3b1; }
 .dl.hunk { color: #5ab0e0; background: rgba(90,176,224,.08); }
 .dl.ctx { color: var(--muted); }
+
+/* ───────── Bottom status bar ───────── */
+.statusbar {
+  display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+  padding: 5px 16px; border-top: 1px solid var(--border);
+  background: linear-gradient(180deg, var(--panel), #07090c);
+  font-size: 11.5px; color: var(--muted-2); box-shadow: 0 -1px 0 rgba(255,255,255,.02);
+}
+.sb-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.sb-item svg { color: var(--muted-2); }
+.sb-item.muted { color: var(--muted-2); opacity: .8; }
+.sb-item.warn { color: #d9a441; }
+.sb-item.warn svg { color: #d9a441; }
+.engine-sb .dot { width: 7px; height: 7px; border-radius: 50%; background: #c08a2a; box-shadow: 0 0 7px #c08a2a; }
+.engine-sb.ok { color: var(--muted); }
+.engine-sb.ok .dot { background: var(--green-bright); box-shadow: 0 0 8px var(--green-bright); }
+.sb-sep { width: 1px; height: 13px; background: var(--border); flex-shrink: 0; }
+.sb-spacer { flex: 1; }
+.sb-ctx-bar { width: 46px; height: 5px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
+.sb-ctx-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--green-bright)); transition: width .3s ease; }

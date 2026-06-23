@@ -25,6 +25,7 @@ interface Msg {
 }
 
 const cap = (s?: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "—");
+const fmtK = (n?: number) => (n == null ? "?" : n >= 1000 ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k` : `${n}`);
 
 // Render a unified-diff patch with per-line coloring.
 function Patch({ text }: { text: string }) {
@@ -66,6 +67,7 @@ export function App() {
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [diffOpen, setDiffOpen] = useState(true);
+  const [ctxUsed, setCtxUsed] = useState(0);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -185,7 +187,11 @@ export function App() {
             else tools.push({ name, status });
             return { ...m, tools };
           }),
-        onDone: (usage) => patchLast((m) => ({ ...m, usage, pending: false })),
+        onDone: (usage) => {
+          patchLast((m) => ({ ...m, usage, pending: false }));
+          const used = usage?.prompt_tokens ?? usage?.total_tokens ?? 0;
+          if (used) setCtxUsed(used);
+        },
         onError: (message) => patchLast((m) => ({ ...m, content: m.content || `Ошибка: ${message}`, pending: false })),
       });
     } catch (e: any) {
@@ -349,6 +355,30 @@ export function App() {
             <div className="composer-dock">{composer(false)}</div>
           </>
         )}
+
+        {/* Bottom status bar */}
+        <footer className="statusbar">
+          <span className={`sb-item engine-sb ${online ? "ok" : "down"}`}>
+            <span className="dot" /> Hermes {health?.version ? `v${health.version}` : ""} {online ? "online" : "offline"} → hub
+          </span>
+          <span className="sb-sep" />
+          <span className="sb-item" title={`${ctxUsed} / ${sub?.ctx ?? "?"} токенов · ${sub?.model ?? ""}`}>
+            <Icon name="brain" size={13} />
+            <span className="sb-ctx-bar"><span style={{ width: `${Math.min(100, sub?.ctx ? (ctxUsed / sub.ctx) * 100 : 0)}%` }} /></span>
+            {fmtK(ctxUsed)}/{fmtK(sub?.ctx)} ctx
+          </span>
+          <span className="sb-sep" />
+          <span className={`sb-item ${agent?.auto_accept ? "warn" : ""}`} title="Режим выполнения инструментов агентом">
+            <Icon name="shield" size={13} /> {agent?.auto_accept ? "авто-выполнение" : "по запросу"}
+          </span>
+          <span className="sb-item" title="Изоляция выполнения инструментов">
+            <Icon name="box" size={13} /> {agent?.sandboxed ? "sandbox" : "host"}
+          </span>
+          <span className="sb-spacer" />
+          <span className="sb-item muted" title="Час/неделя — ждёт эндпоинт хаба /api/cli/usage">
+            <Icon name="gauge" size={13} /> лимиты · скоро
+          </span>
+        </footer>
       </main>
 
       {/* Right: workspace diff (when the agent changed files) */}

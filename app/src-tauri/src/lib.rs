@@ -158,13 +158,22 @@ async fn hermes_get(path: String, config: State<'_, Config>) -> Result<serde_jso
 struct AgentInfo {
     workspace: String,
     home: String,
+    auto_accept: bool,
+    sandboxed: bool,
 }
 
 #[tauri::command]
 fn agent_info(ws: State<'_, WorkspaceState>, config: State<'_, Config>) -> AgentInfo {
+    let cfg = std::fs::read_to_string(hermes_home().join("config.yaml")).unwrap_or_default();
+    let auto_accept = cfg
+        .lines()
+        .any(|l| l.trim_start().starts_with("hooks_auto_accept:") && l.contains("true"));
     AgentInfo {
         workspace: ws.0.lock().unwrap().clone(),
         home: config.home.clone(),
+        // api_server runs tools on the host; Hermes config has no sandbox section.
+        sandboxed: false,
+        auto_accept,
     }
 }
 
@@ -284,6 +293,16 @@ async fn subscription(config: State<'_, Config>) -> Result<serde_json::Value, St
         .await
         .map_err(|e| e.to_string())?;
     let json: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    // active model (config.yaml model.default) + its context window from cli/status models[]
+    let active_model = read_yaml_field("model", "default").unwrap_or_default();
+    let ctx = json["models"]
+        .as_array()
+        .and_then(|arr| {
+            arr.iter()
+                .find(|m| m["id"].as_str() == Some(active_model.as_str()))
+                .and_then(|m| m["ctx"].as_u64())
+        })
+        .unwrap_or(0);
     Ok(serde_json::json!({
         "tier": json["tier"],
         "user": json["user"]["name"],
@@ -291,7 +310,25 @@ async fn subscription(config: State<'_, Config>) -> Result<serde_json::Value, St
         "rpm": json["limits"]["rpm"],
         "parallel": json["limits"]["parallel"],
         "models": json["models"].as_array().map(|a| a.len()).unwrap_or(0),
+        "model": active_model,
+        "ctx": ctx,
     }))
+}
+
+/// Read a `field:` under a top-level `section:` from ~/.hermes/config.yaml (best-effort).
+fn read_yaml_field(section: &str, field: &str) -> Option<String> {
+    let txt = std::fs::read_to_string(hermes_home().join("config.yaml")).ok()?;
+    let mut in_section = false;
+    for line in txt.lines() {
+        let trimmed = line.trim_start();
+        if !line.starts_with(' ') && line.contains(':') {
+            in_section = trimmed.starts_with(&format!("{section}:"));
+        }
+        if in_section && trimmed.starts_with(&format!("{field}:")) {
+            return Some(trimmed[field.len() + 1..].trim().to_string());
+        }
+    }
+    None
 }
 
 /// Generate an image via the hub Image API (FLUX, async: submit → poll → result).

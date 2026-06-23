@@ -4,7 +4,7 @@
 type Name =
   | "plus" | "folder" | "send" | "spark" | "image" | "check"
   | "brain" | "puzzle" | "pin" | "pinOff" | "tool" | "alert"
-  | "search" | "chevron" | "dot";
+  | "search" | "chevron" | "dot" | "shield" | "box" | "gauge";
 
 const P: Record<Name, JSX.Element> = {
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
@@ -22,6 +22,9 @@ const P: Record<Name, JSX.Element> = {
   search: <><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></>,
   chevron: <path d="m9 18 6-6-6-6" />,
   dot: <circle cx="12" cy="12" r="5" />,
+  shield: <path d="M12 3 5 6v5c0 4 3 7 7 8 4-1 7-4 7-8V6z" />,
+  box: <><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5z" /><path d="M3 7.5 12 12l9-4.5M12 12v9" /></>,
+  gauge: <><path d="M12 13a2 2 0 1 0 0-4" /><path d="M12 21a9 9 0 1 0-9-9" /><path d="M12 9V5" /></>,
 };
 
 export function Icon({ name, size = 18, className, fill }: { name: Name; size?: number; className?: string; fill?: boolean }) {
