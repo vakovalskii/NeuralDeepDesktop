@@ -14,7 +14,7 @@ links:
 ## Context
 
 The product north star is to ship the *complete* power of Hermes + ndcode behind a very light
-desktop, not a stripped toy (see [tasks_01/task_01](../../tasks_01/task_01.md)).
+desktop, not a stripped toy.
 
 ## Decision
 

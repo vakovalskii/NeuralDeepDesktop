@@ -29,7 +29,7 @@ hub**. Start at [architecture](./reference/architecture.md).
   - [0002 — Thin wrapper, full harness](./decisions/0002-thin-wrapper-full-harness.md)
 - **Ontology** → [ontology](./ontology.md)
 
-## Original plan
+## Status
 
-The research + task breakdown lives in [`../tasks_01/`](../tasks_01/) (task_01…task_11);
-resolution status is consolidated in [verification](./reference/verification.md).
+Resolution of the original research questions (Q1–Q10) and the end-to-end gate is consolidated
+in [verification](./reference/verification.md).

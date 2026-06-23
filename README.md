@@ -33,7 +33,7 @@ manages the backend.
   keys, routing, cost.
 - **Easy to package.** Light installer (Tauri shell + ndcode native binary + `uv`); the
   heavy Python harness is provisioned on first run, not stuffed into the installer.
-- **MIT all the way down → sellable** under our own brand. See `tasks_01/task_10.md`.
+- **MIT all the way down → sellable** under our own brand. See `THIRD_PARTY_LICENSES.md`.
 
 ## Component verdict (build-vs-adopt)
 
@@ -44,24 +44,6 @@ manages the backend.
 | Coding worker | **Adopt** `vakovalskii/NeuralDeepCode` (ndcode, MIT fork of opencode) via a Hermes skill | your repo |
 | Model proxy | **External** NeuralDeep hub (OpenAI-compatible) | yours |
 | Desktop wrapper | **Build** thin (lift the Tauri shell + Developer ID signing from `NeuralDeskApp`) | ours |
-
-## Tasks
-
-Full research + actionable breakdown in [`tasks_01/`](tasks_01/):
-
-| File | Topic |
-|------|-------|
-| [task_01](tasks_01/task_01.md) | Vision & target architecture (master) |
-| [task_02](tasks_01/task_02.md) | Hermes Agent core — internals, API surface, run model |
-| [task_03](tasks_01/task_03.md) | ndcode coding worker — headless mode, hub wiring |
-| [task_04](tasks_01/task_04.md) | fathah/hermes-desktop — backend layer to lift |
-| [task_05](tasks_01/task_05.md) | Single model proxy (NeuralDeep hub / LiteLLM) |
-| [task_06](tasks_01/task_06.md) | Backend packaging (uv + standalone CPython + sidecar) |
-| [task_07](tasks_01/task_07.md) | Light desktop wrapper (Tauri shell) |
-| [task_08](tasks_01/task_08.md) | Integration & transport (HTTP/SSE, process lifecycle) |
-| [task_09](tasks_01/task_09.md) | Packaging, signing & notarization (Mac + Windows) |
-| [task_10](tasks_01/task_10.md) | Licensing & commercialization |
-| [task_11](tasks_01/task_11.md) | Open questions, risks, verification checklist |
 
 ## Status: native Tauri desktop app running ✅
 
@@ -87,6 +69,6 @@ CORS/Origin gate and the key never reaches the frontend.
 - **ndcode skill:** [`skills/ndcode/SKILL.md`](skills/ndcode/SKILL.md) (headless coding worker, installed into `~/.hermes`).
 - **Licensing:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) — all-MIT/Apache/PSF, sellable as Neural Deep.
 
-Per-task resolution is tracked in each `tasks_01/task_*.md` and consolidated in
-`docs/reference/verification.md`. Tasks 09 (signing) and live ndcode delegation remain ship-time
-follow-ups; the dev-run goal is met. Primary sources are cited inline in each task file.
+Resolution status (open questions Q1–Q10, end-to-end gate) is consolidated in
+[`docs/reference/verification.md`](docs/reference/verification.md). Signing notarization and
+live ndcode delegation remain ship-time follow-ups; the dev-run goal is met.

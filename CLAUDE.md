@@ -11,7 +11,6 @@ natively; chat streams UI → Rust host → Hermes `:8642` → neuraldeep hub �
 - **Knowledge base:** [`docs/`](docs/README.md) — start at
   [architecture](docs/reference/architecture.md). Ontology: [docs/ontology.md](docs/ontology.md).
 - **Coding-worker skill:** [`skills/ndcode/SKILL.md`](skills/ndcode/SKILL.md).
-- **Original plan:** [`tasks_01/`](tasks_01/) (task_01…task_11).
 - **Licenses:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md).
 
 ## Run
