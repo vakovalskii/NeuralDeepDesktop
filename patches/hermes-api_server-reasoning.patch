@@ -1,0 +1,54 @@
+--- gateway/platforms/api_server.py.bak.ndd	2026-06-22 09:38:51.578819317 +0300
++++ gateway/platforms/api_server.py	2026-06-22 09:39:52.452343912 +0300
+@@ -1015,6 +1015,7 @@
+         tool_progress_callback=None,
+         tool_start_callback=None,
+         tool_complete_callback=None,
++        reasoning_callback=None,
+         gateway_session_key: Optional[str] = None,
+     ) -> Any:
+         """
+@@ -1063,6 +1064,7 @@
+             tool_progress_callback=tool_progress_callback,
+             tool_start_callback=tool_start_callback,
+             tool_complete_callback=tool_complete_callback,
++            reasoning_callback=reasoning_callback,
+             session_db=self._ensure_session_db(),
+             fallback_model=fallback_model,
+             reasoning_config=reasoning_config,
+@@ -1640,6 +1642,11 @@
+             if delta:
+                 _enqueue("assistant.delta", {"message_id": message_id, "delta": delta})
+ 
++        def _reasoning(text: str) -> None:
++            # Model chain-of-thought (streaming reasoning_content deltas).
++            if text:
++                _enqueue("reasoning.delta", {"message_id": message_id, "delta": text})
++
+         def _tool_progress(event_type: str, tool_name: str = None, preview: str = None, args=None, **kwargs) -> None:
+             if event_type == "reasoning.available":
+                 _enqueue("tool.progress", {"message_id": message_id, "tool_name": tool_name or "_thinking", "delta": preview or ""})
+@@ -1659,6 +1666,7 @@
+                     session_id=session_id,
+                     stream_delta_callback=_delta,
+                     tool_progress_callback=_tool_progress,
++                    reasoning_callback=_reasoning,
+                     gateway_session_key=gateway_session_key,
+                 )
+                 final_response = result.get("final_response", "") if isinstance(result, dict) else ""
+@@ -3499,6 +3507,7 @@
+         tool_progress_callback=None,
+         tool_start_callback=None,
+         tool_complete_callback=None,
++        reasoning_callback=None,
+         agent_ref: Optional[list] = None,
+         gateway_session_key: Optional[str] = None,
+     ) -> tuple:
+@@ -3532,6 +3541,7 @@
+                     tool_progress_callback=tool_progress_callback,
+                     tool_start_callback=tool_start_callback,
+                     tool_complete_callback=tool_complete_callback,
++                    reasoning_callback=reasoning_callback,
+                     gateway_session_key=gateway_session_key,
+                 )
+                 if agent_ref is not None:

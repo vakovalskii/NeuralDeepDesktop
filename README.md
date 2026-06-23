@@ -61,5 +61,30 @@ Full research + actionable breakdown in [`tasks_01/`](tasks_01/):
 | [task_10](tasks_01/task_10.md) | Licensing & commercialization |
 | [task_11](tasks_01/task_11.md) | Open questions, risks, verification checklist |
 
-> Status: research + planning. No application code committed yet — these docs are the plan
-> of record. Primary sources are cited inline in each task file.
+## Status: native Tauri desktop app running ✅
+
+The thin wrapper runs as a **native Tauri desktop app** over the **full Hermes harness**,
+with model calls routed through the **NeuralDeep hub free tier**. Proven end-to-end in the
+native window (Rust host → Hermes `:8642` → `api.neuraldeep.ru/v1` → streamed back) —
+see [`tauri-window-chat.png`](tauri-window-chat.png) (native) and
+[`neuraldeep-desktop-devrun.png`](neuraldeep-desktop-devrun.png) (browser dev).
+
+```bash
+hermes gateway                          # full Hermes backend → OpenAI API on :8642
+cd app && bun install && bun run tauri:dev   # native "Neural Deep" window (Rust host)
+# or, browser-only dev: bun run dev    → http://127.0.0.1:5173
+```
+
+The Tauri **Rust host** (`app/src-tauri/`) spawns/supervises the Hermes gateway and streams
+chat into the webview over a `Channel` — Rust is the trusted loopback client, so no
+CORS/Origin gate and the key never reaches the frontend.
+
+- **App:** [`app/`](app/) — thin React/Vite chat shell ([`app/README.md`](app/README.md)).
+- **Backend spec:** [`docs/reference/hermes-backend.md`](docs/reference/hermes-backend.md) (transport, single proxy, integration).
+- **Packaging/signing:** [`docs/reference/packaging.md`](docs/reference/packaging.md) · **Verification + Q1–Q10:** [`docs/reference/verification.md`](docs/reference/verification.md).
+- **ndcode skill:** [`skills/ndcode/SKILL.md`](skills/ndcode/SKILL.md) (headless coding worker, installed into `~/.hermes`).
+- **Licensing:** [`THIRD_PARTY_LICENSES.md`](THIRD_PARTY_LICENSES.md) — all-MIT/Apache/PSF, sellable as Neural Deep.
+
+Per-task resolution is tracked in each `tasks_01/task_*.md` and consolidated in
+`docs/reference/verification.md`. Tasks 09 (signing) and live ndcode delegation remain ship-time
+follow-ups; the dev-run goal is met. Primary sources are cited inline in each task file.

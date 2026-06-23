@@ -4,6 +4,11 @@
 /dist-react/
 /dist-sidecar/
 node_modules/
+/app/dist/
+/app/src-tauri/target/
+/app/src-tauri/gen/
+**/.playwright-mcp/
+**/.shots/
 .DS_Store
 
 # App-data / provisioned harness (never committed)
@@ -13,3 +18,16 @@ node_modules/
 # Secrets
 .env
 *.local
+
+# GitMark derived index (regenerated)
+.gitmark/
+
+# scratch screenshots (dev captures)
+/app-*.png
+/tauri-window.png
+/tauri-styled.png
+/tauri-reasoning.png
+/tauri-reasoning2.png
+/tauri-reasoning-live.png
+/tauri-reasoning-live2.png
+/tauri-reasoning-final.png
