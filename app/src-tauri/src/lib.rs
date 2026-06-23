@@ -168,11 +168,11 @@ fn agent_info(ws: State<'_, WorkspaceState>, config: State<'_, Config>) -> Agent
     let auto_accept = cfg
         .lines()
         .any(|l| l.trim_start().starts_with("hooks_auto_accept:") && l.contains("true"));
+    let sandboxed = read_yaml_field("terminal", "backend").as_deref() == Some("docker");
     AgentInfo {
         workspace: ws.0.lock().unwrap().clone(),
         home: config.home.clone(),
-        // api_server runs tools on the host; Hermes config has no sandbox section.
-        sandboxed: false,
+        sandboxed,
         auto_accept,
     }
 }
@@ -261,6 +261,107 @@ fn workspace_diff(ws: State<'_, WorkspaceState>) -> Result<Vec<DiffFile>, String
         }
     }
     Ok(files)
+}
+
+fn decode_data_url(data_url: &str) -> Option<Vec<u8>> {
+    use base64::Engine;
+    let b64 = data_url.split(',').nth(1)?;
+    base64::engine::general_purpose::STANDARD.decode(b64).ok()
+}
+
+/// Save a `data:` image via a native Save dialog. Returns the path, or None if cancelled.
+#[tauri::command]
+async fn save_image(data_url: String) -> Result<Option<String>, String> {
+    let bytes = decode_data_url(&data_url).ok_or("bad data url")?;
+    let file = rfd::AsyncFileDialog::new()
+        .set_file_name("neuraldeep.png")
+        .add_filter("PNG", &["png"])
+        .save_file()
+        .await;
+    match file {
+        Some(h) => {
+            let p = h.path().to_path_buf();
+            std::fs::write(&p, &bytes).map_err(|e| e.to_string())?;
+            Ok(Some(p.to_string_lossy().into_owned()))
+        }
+        None => Ok(None),
+    }
+}
+
+/// Write a `data:` image to a temp file and open it in the default viewer.
+#[tauri::command]
+fn open_image(data_url: String) -> Result<(), String> {
+    let bytes = decode_data_url(&data_url).ok_or("bad data url")?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let path = std::env::temp_dir().join(format!("nd-image-{nanos}.png"));
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    std::process::Command::new("open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Write `field: value` (top-level if section=None, else under `section:`) into config.yaml.
+fn write_yaml_field(section: Option<&str>, field: &str, value: &str) {
+    let path = hermes_home().join("config.yaml");
+    let Ok(txt) = std::fs::read_to_string(&path) else { return };
+    let mut out = String::new();
+    let mut in_section = section.is_none();
+    let mut done = false;
+    for line in txt.lines() {
+        let trimmed = line.trim_start();
+        if let Some(sec) = section {
+            if !line.starts_with(' ') && line.contains(':') {
+                in_section = trimmed.starts_with(&format!("{sec}:"));
+            }
+        }
+        let is_target = if section.is_none() {
+            !line.starts_with(' ') && trimmed.starts_with(&format!("{field}:"))
+        } else {
+            in_section && line.starts_with(' ') && trimmed.starts_with(&format!("{field}:"))
+        };
+        if is_target && !done {
+            let indent = &line[..line.len() - trimmed.len()];
+            out.push_str(&format!("{indent}{field}: {value}\n"));
+            done = true;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if done {
+        let _ = std::fs::write(&path, out);
+    }
+}
+
+/// Apply config.yaml updates: keys are "field" (top-level) or "section.field".
+#[tauri::command]
+fn set_config(updates: std::collections::HashMap<String, String>) -> Result<(), String> {
+    for (k, v) in updates {
+        match k.split_once('.') {
+            Some((sec, field)) => write_yaml_field(Some(sec), field, &v),
+            None => write_yaml_field(None, &k, &v),
+        }
+    }
+    Ok(())
+}
+
+/// Restart the Hermes gateway so config changes take effect.
+#[tauri::command]
+fn restart_backend(backend: State<'_, Backend>, config: State<'_, Config>) -> Result<(), String> {
+    if let Some(mut c) = backend.child.lock().unwrap().take() {
+        let _ = c.kill();
+    }
+    let _ = std::process::Command::new("pkill")
+        .args(["-f", "hermes gateway"])
+        .status();
+    std::thread::sleep(std::time::Duration::from_millis(1800));
+    ensure_backend(backend.inner(), config.inner());
+    Ok(())
 }
 
 /// Open a native folder picker and set the agent working directory.
@@ -550,6 +651,10 @@ pub fn run() {
             pick_workspace,
             workspace_diff,
             generate_image,
+            save_image,
+            open_image,
+            set_config,
+            restart_backend,
             create_session,
             chat_stream
         ])

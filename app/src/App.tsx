@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   getHealth, getAgentInfo, getSubscription, getSessions, getSessionMessages,
-  ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills, isTauri,
+  ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
+  saveImage, openImage, applyConfig, isTauri,
   type Health, type AgentInfo, type Subscription, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -52,6 +53,9 @@ const SUGGESTIONS = [
 // Local slash-commands (merged with Hermes skills in the in-chat menu).
 const LOCAL_CMDS = [
   { name: "img", icon: "image", hint: "сгенерировать картинку — /img <промпт>" },
+  { name: "new", icon: "plus", hint: "новый чат" },
+  { name: "diff", icon: "search", hint: "показать дифф рабочей папки" },
+  { name: "folder", icon: "folder", hint: "сменить рабочую папку агента" },
 ] as const;
 
 export function App() {
@@ -68,6 +72,7 @@ export function App() {
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [diffOpen, setDiffOpen] = useState(true);
   const [ctxUsed, setCtxUsed] = useState(0);
+  const [restarting, setRestarting] = useState(false);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -88,6 +93,17 @@ export function App() {
     if (dir) getAgentInfo().then(setAgent);
   }
 
+  async function toggleRuntime(updates: Record<string, string>) {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      await applyConfig(updates);
+      await getAgentInfo().then(setAgent); // badge reflects config immediately
+    } finally {
+      setTimeout(() => setRestarting(false), 9000); // backend cold-start window
+    }
+  }
+
   useEffect(() => {
     getHealth().then(setHealth);
     getAgentInfo().then(setAgent);
@@ -105,7 +121,7 @@ export function App() {
   const slashMatch = /^\/([\p{L}\w-]*)$/u.exec(input);
   const cmdItems = slashMatch
     ? [
-        ...LOCAL_CMDS.map((c) => ({ name: c.name, icon: "image" as const, hint: c.hint })),
+        ...LOCAL_CMDS.map((c) => ({ name: c.name, icon: c.icon, hint: c.hint })),
         ...skills.map((s) => ({ name: s.name, icon: "puzzle" as const, hint: s.description || s.label || "скилл Hermes" })),
       ]
         .filter((c) => c.name.toLowerCase().startsWith(slashMatch[1].toLowerCase()))
@@ -165,6 +181,10 @@ export function App() {
   async function send(text: string) {
     const prompt = text.trim();
     if (!prompt || busy) return;
+    // app-side companion commands (bare, no args)
+    if (prompt === "/new" || prompt === "/clear") { newChat(); return; }
+    if (prompt === "/diff") { setInput(""); refreshDiff(); return; }
+    if (prompt === "/folder") { setInput(""); changeFolder(); return; }
     if (IMG_RE.test(prompt)) return imageGen(prompt, prompt.replace(IMG_RE, "").trim());
     setInput("");
     setBusy(true);
@@ -336,9 +356,13 @@ export function App() {
                     )}
                     <div className="bubble">
                       {m.image ? (
-                        <a href={m.image} download="neuraldeep.png" className="gen-img-link">
-                          <img className="gen-img" src={m.image} alt="generated" />
-                        </a>
+                        <div className="gen-img-wrap">
+                          <img className="gen-img" src={m.image} alt="generated" onClick={() => openImage(m.image!)} title="Открыть" />
+                          <div className="gen-img-actions">
+                            <button onClick={() => openImage(m.image!)}><Icon name="image" size={13} /> Открыть</button>
+                            <button onClick={() => saveImage(m.image!)}><Icon name="send" size={13} className="rot180" /> Скачать</button>
+                          </div>
+                        </div>
                       ) : m.role === "assistant"
                         ? (m.pending
                             ? (m.content ? <>{m.content}<span className="cursor">▋</span></> : <span className="cursor">▋</span>)
@@ -368,12 +392,22 @@ export function App() {
             {fmtK(ctxUsed)}/{fmtK(sub?.ctx)} ctx
           </span>
           <span className="sb-sep" />
-          <span className={`sb-item ${agent?.auto_accept ? "warn" : ""}`} title="Режим выполнения инструментов агентом">
+          <button
+            className={`sb-item sb-btn ${agent?.auto_accept ? "warn" : "good"}`}
+            onClick={() => toggleRuntime({ hooks_auto_accept: agent?.auto_accept ? "false" : "true" })}
+            disabled={restarting}
+            title="Клик: авто-выполнение ↔ по запросу (рестарт backend)"
+          >
             <Icon name="shield" size={13} /> {agent?.auto_accept ? "авто-выполнение" : "по запросу"}
-          </span>
-          <span className="sb-item" title="Изоляция выполнения инструментов">
-            <Icon name="box" size={13} /> {agent?.sandboxed ? "sandbox" : "host"}
-          </span>
+          </button>
+          <button
+            className={`sb-item sb-btn ${agent?.sandboxed ? "good" : ""}`}
+            onClick={() => toggleRuntime({ "terminal.backend": agent?.sandboxed ? "local" : "docker" })}
+            disabled={restarting}
+            title="Клик: host ↔ docker sandbox (рестарт backend)"
+          >
+            <Icon name="box" size={13} /> {restarting ? "рестарт…" : agent?.sandboxed ? "sandbox" : "host"}
+          </button>
           <span className="sb-spacer" />
           <span className="sb-item muted" title="Час/неделя — ждёт эндпоинт хаба /api/cli/usage">
             <Icon name="gauge" size={13} /> лимиты · скоро

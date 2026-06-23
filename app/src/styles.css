@@ -278,3 +278,22 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .sb-spacer { flex: 1; }
 .sb-ctx-bar { width: 46px; height: 5px; border-radius: 3px; background: var(--panel-2); border: 1px solid var(--border); overflow: hidden; }
 .sb-ctx-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--green-bright)); transition: width .3s ease; }
+
+/* generated image actions */
+.gen-img-wrap { display: inline-block; }
+.gen-img { cursor: pointer; }
+.gen-img-actions { display: flex; gap: 8px; margin-top: 8px; }
+.gen-img-actions button {
+  display: inline-flex; align-items: center; gap: 6px; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border); color: var(--muted); border-radius: 8px; padding: 5px 11px;
+  font-size: 12px; font-family: inherit; cursor: pointer; box-shadow: var(--hi); transition: all .12s ease;
+}
+.gen-img-actions button:hover { border-color: var(--green); color: var(--green-bright); }
+.gen-img-actions svg.rot180 { transform: rotate(180deg); }
+
+/* working status-bar buttons */
+.sb-btn { background: none; border: none; font-family: inherit; font-size: 11.5px; cursor: pointer; padding: 2px 7px; border-radius: 6px; transition: background .12s; }
+.sb-btn:hover:not(:disabled) { background: rgba(255,255,255,.05); }
+.sb-btn:disabled { opacity: .55; cursor: default; }
+.sb-btn.good { color: var(--green-bright); } .sb-btn.good svg { color: var(--green-bright); }
+.sb-btn.warn { color: #d9a441; } .sb-btn.warn svg { color: #d9a441; }

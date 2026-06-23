@@ -61,6 +61,26 @@ export async function generateImage(prompt: string, aspect = "1:1"): Promise<str
   return (await (await core()).invoke("generate_image", { prompt, aspect })) as string;
 }
 
+/** Save a data: image via a native dialog. Returns the saved path or null. Tauri-only. */
+export async function saveImage(dataUrl: string): Promise<string | null> {
+  if (!isTauri) { const a = document.createElement("a"); a.href = dataUrl; a.download = "neuraldeep.png"; a.click(); return null; }
+  return (await (await core()).invoke("save_image", { dataUrl })) as string | null;
+}
+
+/** Open a data: image in the OS default viewer. Tauri-only. */
+export async function openImage(dataUrl: string): Promise<void> {
+  if (!isTauri) { window.open(dataUrl, "_blank"); return; }
+  await (await core()).invoke("open_image", { dataUrl });
+}
+
+/** Apply config.yaml updates (keys: "field" or "section.field") + restart gateway. Tauri-only. */
+export async function applyConfig(updates: Record<string, string>): Promise<void> {
+  if (!isTauri) return;
+  const c = await core();
+  await c.invoke("set_config", { updates });
+  await c.invoke("restart_backend");
+}
+
 export interface DiffFile { path: string; status: string; patch: string }
 
 /** Unified diff of the agent working dir (git). Empty if not a repo / no changes. Tauri-only. */
