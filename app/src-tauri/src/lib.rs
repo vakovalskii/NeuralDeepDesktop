@@ -22,6 +22,12 @@ const HUB_IMG: &str = "https://api.neuraldeep.ru/v1/images";
 #[derive(Default)]
 struct Backend {
     child: Mutex<Option<Child>>,
+    /// Provisioning state: "" | "reused" | "starting" | "missing" | "error"
+    state: Mutex<String>,
+}
+
+fn set_backend_state(backend: &Backend, s: &str) {
+    *backend.state.lock().unwrap() = s.to_string();
 }
 
 /// Live, user-changeable agent working directory.
@@ -48,8 +54,10 @@ enum StreamEvent {
 fn home() -> std::path::PathBuf {
     dirs::home_dir().unwrap_or_default()
 }
+/// Our **own**, isolated Hermes home — never the user's `~/.hermes`.
+/// `~/.neuraldeep/hermes` (no spaces, so the bash installer is happy).
 fn hermes_home() -> std::path::PathBuf {
-    home().join(".hermes")
+    home().join(".neuraldeep").join("hermes")
 }
 
 /// Read a `KEY=value` line from ~/.hermes/.env.
@@ -97,12 +105,30 @@ async fn fetch_health() -> Option<serde_json::Value> {
         .ok()
 }
 
+/// The `hermes` launcher inside our provisioned venv (None until provisioned).
 fn hermes_launcher() -> Option<String> {
-    let candidate = home().join(".local/bin/hermes");
-    if candidate.exists() {
-        return Some(candidate.to_string_lossy().into_owned());
+    let p = hermes_home().join("hermes-agent/venv/bin/hermes");
+    p.exists().then(|| p.to_string_lossy().into_owned())
+}
+
+/// True once the first-run installer has produced a runnable Hermes.
+fn provisioned() -> bool {
+    hermes_launcher().is_some()
+}
+
+#[tauri::command]
+fn is_provisioned() -> bool {
+    provisioned()
+}
+
+/// Random hex key (loopback API_SERVER_KEY) from /dev/urandom.
+fn gen_key() -> String {
+    let mut buf = [0u8; 24];
+    if let Ok(mut f) = std::fs::File::open("/dev/urandom") {
+        use std::io::Read;
+        let _ = f.read_exact(&mut buf);
     }
-    Some("hermes".to_string())
+    buf.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Marker file: presence with "1" means the gateway runs under the Seatbelt sandbox.
@@ -181,6 +207,7 @@ fn ensure_backend(backend: &Backend, cfg: &Config) {
         c
     };
     match cmd
+        .env("HERMES_HOME", hermes_home()) // isolate from the user's ~/.hermes
         .current_dir(&cfg.workspace)
         .stdin(Stdio::null())
         .stdout(out)
@@ -798,6 +825,154 @@ async fn chat_stream(
     Ok(())
 }
 
+const INSTALL_URL: &str = "https://hermes-agent.nousresearch.com/install.sh";
+const HUB_BASE: &str = "https://api.neuraldeep.ru/v1";
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum ProvisionEvent {
+    Stage { stage: String },
+    Log { line: String },
+    Done { ok: bool, message: String },
+}
+
+/// Point the freshly-installed config at the NeuralDeep hub + set a loopback key.
+fn write_hub_config(hub_key: &str) {
+    let home = hermes_home();
+    let cfg_path = home.join("config.yaml");
+    let model_block = format!(
+        "model:\n  default: qwen3.6-35b-a3b\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
+    );
+    // Replace the top-level `model:` block (from `model:` up to the next column-0 key).
+    let txt = std::fs::read_to_string(&cfg_path).unwrap_or_default();
+    let lines: Vec<&str> = txt.lines().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    let mut replaced = false;
+    while i < lines.len() {
+        if lines[i].starts_with("model:") {
+            out.push_str(&model_block);
+            i += 1;
+            while i < lines.len()
+                && (lines[i].is_empty()
+                    || lines[i].starts_with(|c: char| c == ' ' || c == '\t' || c == '#'))
+            {
+                i += 1;
+            }
+            replaced = true;
+            continue;
+        }
+        out.push_str(lines[i]);
+        out.push('\n');
+        i += 1;
+    }
+    if !replaced {
+        out = format!("{model_block}{out}");
+    }
+    let _ = std::fs::write(&cfg_path, out);
+
+    // Loopback API_SERVER_KEY in .env (last assignment wins for dotenv loaders).
+    let env_path = home.join(".env");
+    let mut env_txt = std::fs::read_to_string(&env_path).unwrap_or_default();
+    if !env_txt.is_empty() && !env_txt.ends_with('\n') {
+        env_txt.push('\n');
+    }
+    env_txt.push_str(&format!("API_SERVER_KEY={}\n", gen_key()));
+    let _ = std::fs::write(&env_path, env_txt);
+}
+
+/// First-run install: fetch the official installer, run it into our isolated home,
+/// then point it at the hub. Streams progress over the channel. App restarts after.
+#[tauri::command]
+async fn provision(on_event: Channel<ProvisionEvent>) -> Result<(), String> {
+    let _ = std::fs::create_dir_all(hermes_home());
+    let _ = on_event.send(ProvisionEvent::Stage { stage: "download".into() });
+
+    let script = reqwest::Client::new()
+        .get(INSTALL_URL)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| format!("download installer: {e}"))?
+        .text()
+        .await
+        .map_err(|e| e.to_string())?;
+    let script_path = hermes_home().join("install.sh");
+    std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
+
+    let on2 = on_event.clone();
+    let hub_key = option_env!("ND_HUB_KEY").unwrap_or("").to_string();
+    let res = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
+        use std::io::{BufRead, BufReader};
+        on2.send(ProvisionEvent::Stage { stage: "install".into() }).ok();
+        let mut child = Command::new("bash")
+            .arg(&script_path)
+            .args(["--non-interactive", "--skip-setup", "--skip-browser"])
+            .env("HERMES_HOME", hermes_home())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("spawn installer: {e}"))?;
+
+        // drain stderr on a side thread so the pipe never blocks the installer
+        let on_err = on2.clone();
+        let stderr = child.stderr.take();
+        let herr = std::thread::spawn(move || {
+            if let Some(e) = stderr {
+                for line in BufReader::new(e).lines().map_while(Result::ok) {
+                    on_err.send(ProvisionEvent::Log { line }).ok();
+                }
+            }
+        });
+        if let Some(out) = child.stdout.take() {
+            for line in BufReader::new(out).lines().map_while(Result::ok) {
+                on2.send(ProvisionEvent::Log { line }).ok();
+            }
+        }
+        let status = child.wait().map_err(|e| e.to_string())?;
+        let _ = herr.join();
+        if !status.success() {
+            return Err(format!("installer exited: {status}"));
+        }
+        on2.send(ProvisionEvent::Stage { stage: "configure".into() }).ok();
+        write_hub_config(&hub_key);
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+
+    match res {
+        Ok(()) => {
+            on_event.send(ProvisionEvent::Done { ok: true, message: "ok".into() }).ok();
+            Ok(())
+        }
+        Err(e) => {
+            on_event.send(ProvisionEvent::Done { ok: false, message: e.clone() }).ok();
+            Err(e)
+        }
+    }
+}
+
+/// Relaunch the app (used right after a successful first-run install).
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
+/// Coarse backend lifecycle for the boot screen.
+#[tauri::command]
+async fn backend_status(backend: State<'_, Backend>) -> Result<serde_json::Value, String> {
+    if fetch_health().await.is_some() {
+        return Ok(serde_json::json!({ "state": "online" }));
+    }
+    if !provisioned() {
+        return Ok(serde_json::json!({ "state": "needs_provision" }));
+    }
+    let s = backend.state.lock().unwrap().clone();
+    let state = if s.is_empty() { "starting".to_string() } else { s };
+    Ok(serde_json::json!({ "state": state }))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let home_s = home().to_string_lossy().into_owned();
@@ -830,12 +1005,22 @@ pub fn run() {
             set_config,
             set_sandbox,
             restart_backend,
+            is_provisioned,
+            provision,
+            restart_app,
+            backend_status,
             create_session,
             chat_stream
         ])
         .setup(move |app| {
             let backend = app.state::<Backend>();
-            ensure_backend(&backend, &cfg);
+            // Only auto-start the gateway once Hermes is provisioned; otherwise the
+            // frontend shows the first-run setup screen and drives provisioning.
+            if provisioned() {
+                ensure_backend(&backend, &cfg);
+            } else {
+                set_backend_state(&backend, "needs_provision");
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

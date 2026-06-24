@@ -56,6 +56,36 @@ export async function getHealth(): Promise<Health | null> {
   }
 }
 
+export interface ProvisionEvent {
+  kind: "stage" | "log" | "done";
+  stage?: string;
+  line?: string;
+  ok?: boolean;
+  message?: string;
+}
+
+/** Coarse backend lifecycle: "online" | "needs_provision" | "starting" | "error". */
+export async function backendStatus(): Promise<string> {
+  try {
+    if (isTauri) return ((await (await core()).invoke("backend_status")) as any).state as string;
+  } catch { /* fall through */ }
+  return "online"; // browser dev hits Hermes via the Vite proxy
+}
+
+/** Run the first-run installer, streaming progress. Tauri-only. */
+export async function provision(onEvent: (e: ProvisionEvent) => void): Promise<void> {
+  if (!isTauri) return;
+  const { invoke, Channel } = await core();
+  const ch = new Channel<ProvisionEvent>();
+  ch.onmessage = onEvent;
+  await invoke("provision", { onEvent: ch });
+}
+
+/** Relaunch the app (after a successful install). Tauri-only. */
+export async function restartApp(): Promise<void> {
+  if (isTauri) await (await core()).invoke("restart_app");
+}
+
 export async function pickWorkspace(): Promise<string | null> {
   try {
     if (isTauri) return (await (await core()).invoke("pick_workspace")) as string | null;

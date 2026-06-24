@@ -3,7 +3,8 @@ import {
   getHealth, getAgentInfo, getSubscription, getUsage, getSessions, getSessionMessages,
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
   saveImage, openImage, applyConfig, setSandbox,
-  deleteSession, renameSession, generateTitle, copyText, isTauri,
+  deleteSession, renameSession, generateTitle, copyText,
+  backendStatus, provision, restartApp, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -84,6 +85,10 @@ export function App() {
   const [del, setDel] = useState<SessionRow | null>(null);
   const [ren, setRen] = useState<{ s: SessionRow; value: string } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "ready">("checking");
+  const [provStage, setProvStage] = useState("download");
+  const [provLog, setProvLog] = useState<string[]>([]);
+  const [provError, setProvError] = useState<string | null>(null);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -219,6 +224,30 @@ export function App() {
   function onChatScroll(e: React.UIEvent<HTMLDivElement>) {
     const el = e.currentTarget;
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  // First-run gate: decide whether Hermes needs to be installed before the app works.
+  useEffect(() => {
+    backendStatus().then((st) => setBoot(st === "needs_provision" ? "needs" : "ready"));
+  }, []);
+
+  async function runProvision() {
+    setBoot("provisioning");
+    setProvError(null);
+    setProvLog([]);
+    setProvStage("download");
+    await provision((e) => {
+      if (e.kind === "stage") setProvStage(e.stage!);
+      else if (e.kind === "log" && e.line) {
+        // strip ANSI colour codes + stray control chars the installer emits
+        const clean = e.line.replace(/\x1b\[[0-9;]*m/g, "").replace(/[\x00-\x1f\x7f]/g, "").trim();
+        if (clean) setProvLog((l) => [...l.slice(-300), clean]);
+      }
+      else if (e.kind === "done") {
+        if (e.ok) { setProvStage("start"); setTimeout(() => restartApp(), 700); }
+        else { setProvError(e.message || "ошибка установки"); }
+      }
+    }).catch((err) => setProvError(String(err)));
   }
 
   function copyMsg(i: number, text: string) {
@@ -367,6 +396,57 @@ export function App() {
       </div>
     </div>
   );
+
+  if (boot === "needs" || boot === "provisioning") {
+    const STAGES: [string, string][] = [
+      ["download", "Загрузка установщика"],
+      ["install", "Python · Node · Hermes · зависимости"],
+      ["configure", "Настройка под NeuralDeep hub"],
+      ["start", "Запуск"],
+    ];
+    const curIdx = STAGES.findIndex(([k]) => k === provStage);
+    return (
+      <div className="setup">
+        <div className="setup-card">
+          <div className="logo setup-logo">ND</div>
+          <h1>Первая настройка</h1>
+          <p className="setup-sub">
+            Neural Deep установит изолированное окружение Hermes в собственную папку
+            (<code>~/.neuraldeep</code>) — твой <code>~/.hermes</code> не затрагивается.
+            Загрузка ~1.5 ГБ при первом запуске.
+          </p>
+
+          {boot === "needs" && !provError && (
+            <button className="setup-go" onClick={runProvision}>
+              <Icon name="box" size={16} /> Установить окружение
+            </button>
+          )}
+
+          {boot === "provisioning" && (
+            <div className="setup-stages">
+              {STAGES.map(([k, label], i) => (
+                <div key={k} className={`setup-stage ${i < curIdx ? "done" : i === curIdx ? "active" : "pending"}`}>
+                  <span className="setup-stage-ico">
+                    {i < curIdx ? <Icon name="check" size={14} /> : i === curIdx ? <span className="spinner" /> : <Icon name="dot" size={8} />}
+                  </span>
+                  {label}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {provError ? (
+            <div className="setup-error">
+              <Icon name="alert" size={14} /> {provError}
+              <button className="setup-retry" onClick={runProvision}>Повторить</button>
+            </div>
+          ) : provLog.length > 0 ? (
+            <pre className="setup-log">{provLog.slice(-9).join("\n")}</pre>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
