@@ -22,6 +22,15 @@ export interface Subscription {
   model?: string;
   ctx?: number;
 }
+export interface Gate { used: number; limit: number; pct: number; reset_in_sec: number; window: string }
+export interface Usage {
+  billing?: { mode?: string; tier?: string };
+  limits?: Record<string, number | null>;
+  gate?: { session?: Gate; week?: Gate };
+  usage?: Record<string, { requests: number; tokens: number }>;
+  images?: { day?: { used: number; limit: number }; month?: { used: number; limit: number } };
+  wallet?: { balance_rub?: number; spent_rub?: number } | null;
+}
 export interface RichHandlers {
   onDelta: (s: string) => void;
   onReasoning: (s: string) => void;
@@ -110,6 +119,14 @@ export async function getSkills(): Promise<SkillRow[]> {
   } catch {
     return [];
   }
+}
+
+/** Live usage/limits from the hub (gate.session/week + wallet). */
+export async function getUsage(): Promise<Usage | null> {
+  try {
+    if (isTauri) return (await (await core()).invoke("usage")) as Usage;
+  } catch { /* hub key only available to the Rust host */ }
+  return null;
 }
 
 export async function getAgentInfo(): Promise<AgentInfo | null> {

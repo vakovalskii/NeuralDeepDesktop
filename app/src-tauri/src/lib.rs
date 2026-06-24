@@ -488,6 +488,23 @@ fn read_yaml_field(section: &str, field: &str) -> Option<String> {
     None
 }
 
+/// Live usage/limits from the hub (gate.session/week + rolling usage + rouble wallet).
+#[tauri::command]
+async fn usage(config: State<'_, Config>) -> Result<serde_json::Value, String> {
+    let key = config.hub_key.clone();
+    if key.is_empty() {
+        return Err("no hub key".into());
+    }
+    let resp = reqwest::Client::new()
+        .get("https://hub.neuraldeep.ru/api/cli/usage")
+        .header("Authorization", format!("Bearer {key}"))
+        .timeout(std::time::Duration::from_secs(8))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    resp.json().await.map_err(|e| e.to_string())
+}
+
 /// Generate an image via the hub Image API (FLUX, async: submit → poll → result).
 /// Returns a `data:image/png;base64,…` URL.
 #[tauri::command]
@@ -704,6 +721,7 @@ pub fn run() {
             hermes_get,
             agent_info,
             subscription,
+            usage,
             pick_workspace,
             workspace_diff,
             generate_image,

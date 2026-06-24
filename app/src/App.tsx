@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  getHealth, getAgentInfo, getSubscription, getSessions, getSessionMessages,
+  getHealth, getAgentInfo, getSubscription, getUsage, getSessions, getSessionMessages,
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
   saveImage, openImage, applyConfig, setSandbox, isTauri,
-  type Health, type AgentInfo, type Subscription, type SessionRow, type DiffFile, type SkillRow,
+  type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
 import { Icon } from "./Icon";
@@ -65,6 +65,7 @@ export function App() {
   const [health, setHealth] = useState<Health | null>(null);
   const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [sub, setSub] = useState<Subscription | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
   const [showReasoning, setShowReasoning] = useState(true);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [pins, setPins] = useState<string[]>(loadPins);
@@ -119,6 +120,7 @@ export function App() {
     getHealth().then(setHealth);
     getAgentInfo().then(setAgent);
     getSubscription().then(setSub);
+    getUsage().then(setUsage);
     getSkills().then(setSkills);
     getWorkspaceDiff().then(setDiffs);
     refreshSessions();
@@ -235,6 +237,7 @@ export function App() {
       setBusy(false);
       refreshSessions();
       refreshDiff();
+      getUsage().then(setUsage);
     }
   }
 
@@ -423,9 +426,21 @@ export function App() {
             <Icon name="box" size={13} /> {restarting ? "рестарт…" : agent?.sandboxed ? "sandbox" : "host"}
           </button>
           <span className="sb-spacer" />
-          <span className="sb-item muted" title="Час/неделя — ждёт эндпоинт хаба /api/cli/usage">
-            <Icon name="gauge" size={13} /> лимиты · скоро
-          </span>
+          {usage?.gate ? (
+            <span
+              className="sb-item"
+              title={`Живые лимиты хаба${usage.gate.session ? ` · сессия ${usage.gate.session.used}/${usage.gate.session.limit} (${usage.gate.session.window})` : ""}${usage.gate.week ? ` · неделя ${usage.gate.week.used}/${usage.gate.week.limit}` : ""}`}
+            >
+              <Icon name="gauge" size={13} />
+              {usage.gate.session != null && ` 3ч ${Math.round(usage.gate.session.pct)}%`}
+              {usage.gate.week != null && ` · нед ${Math.round(usage.gate.week.pct)}%`}
+              {usage.wallet?.balance_rub != null && ` · ₽${usage.wallet.balance_rub}`}
+            </span>
+          ) : (
+            <span className="sb-item muted" title="Лимиты хаба (/api/cli/usage)">
+              <Icon name="gauge" size={13} /> лимиты · —
+            </span>
+          )}
         </footer>
       </main>
 
