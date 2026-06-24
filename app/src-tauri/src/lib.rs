@@ -497,6 +497,24 @@ fn restart_backend(backend: State<'_, Backend>, config: State<'_, Config>) -> Re
     Ok(())
 }
 
+/// Copy text to the system clipboard (pbcopy — reliable in the WebView).
+#[tauri::command]
+fn copy_text(text: String) -> Result<(), String> {
+    use std::io::Write;
+    let mut child = std::process::Command::new("pbcopy")
+        .stdin(Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    child
+        .stdin
+        .as_mut()
+        .ok_or("no stdin")?
+        .write_all(text.as_bytes())
+        .map_err(|e| e.to_string())?;
+    child.wait().map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 /// Open a native folder picker and set the agent working directory.
 #[tauri::command]
 async fn pick_workspace(ws: State<'_, WorkspaceState>) -> Result<Option<String>, String> {
@@ -804,6 +822,7 @@ pub fn run() {
             rename_session,
             generate_title,
             pick_workspace,
+            copy_text,
             workspace_diff,
             generate_image,
             save_image,

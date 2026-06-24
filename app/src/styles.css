@@ -355,3 +355,10 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .modal-btn.primary:hover { filter: brightness(1.1); }
 .modal-btn.danger { background: linear-gradient(180deg, #c0394f, #8a2030); color: #fff; border: none; }
 .modal-btn.danger:hover { filter: brightness(1.12); }
+
+/* message copy action */
+.msg-actions { display: flex; align-items: center; gap: 8px; padding-left: 4px; opacity: 0; transition: opacity .12s; }
+.row:hover .msg-actions { opacity: 1; }
+.row.user .msg-actions { justify-content: flex-end; }
+.msg-act { display: inline-flex; align-items: center; gap: 5px; background: none; border: none; color: var(--muted-2); font-family: inherit; font-size: 11px; cursor: pointer; padding: 2px 5px; border-radius: 6px; }
+.msg-act:hover { color: var(--green-bright); background: rgba(255,255,255,.04); }

@@ -99,6 +99,14 @@ export async function setSandbox(on: boolean): Promise<void> {
   await c.invoke("restart_backend");
 }
 
+/** Copy text to the system clipboard. */
+export async function copyText(text: string): Promise<void> {
+  try {
+    if (isTauri) { await (await core()).invoke("copy_text", { text }); return; }
+    await navigator.clipboard.writeText(text);
+  } catch { /* best-effort */ }
+}
+
 export interface DiffFile { path: string; status: string; patch: string }
 
 /** Unified diff of the agent working dir (git). Empty if not a repo / no changes. Tauri-only. */

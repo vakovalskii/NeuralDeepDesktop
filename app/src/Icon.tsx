@@ -4,7 +4,7 @@
 type Name =
   | "plus" | "folder" | "send" | "spark" | "image" | "check"
   | "brain" | "puzzle" | "pin" | "pinOff" | "tool" | "alert"
-  | "search" | "chevron" | "dot" | "shield" | "box" | "gauge" | "pencil" | "trash";
+  | "search" | "chevron" | "dot" | "shield" | "box" | "gauge" | "pencil" | "trash" | "copy";
 
 const P: Record<Name, JSX.Element> = {
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
@@ -27,6 +27,7 @@ const P: Record<Name, JSX.Element> = {
   gauge: <><path d="M12 13a2 2 0 1 0 0-4" /><path d="M12 21a9 9 0 1 0-9-9" /><path d="M12 9V5" /></>,
   pencil: <><path d="M4 20h4L18 10a2 2 0 0 0-3-3L5 17z" /><path d="m13.5 6.5 3 3" /></>,
   trash: <><path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="m6 7 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></>,
+  copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>,
 };
 
 export function Icon({ name, size = 18, className, fill }: { name: Name; size?: number; className?: string; fill?: boolean }) {

@@ -3,7 +3,7 @@ import {
   getHealth, getAgentInfo, getSubscription, getUsage, getSessions, getSessionMessages,
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
   saveImage, openImage, applyConfig, setSandbox,
-  deleteSession, renameSession, generateTitle, isTauri,
+  deleteSession, renameSession, generateTitle, copyText, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -83,9 +83,11 @@ export function App() {
   const [restarting, setRestarting] = useState(false);
   const [del, setDel] = useState<SessionRow | null>(null);
   const [ren, setRen] = useState<{ s: SessionRow; value: string } | null>(null);
+  const [copied, setCopied] = useState<number | null>(null);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const stickRef = useRef(true); // stick to bottom unless the user scrolled up
 
   const refreshSessions = () => getSessions().then((s) => setSessions(s.slice(0, 40)));
 
@@ -210,9 +212,20 @@ export function App() {
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
-    // instant scroll (smooth on every streamed token churns the compositor → jank)
-    el.scrollTop = el.scrollHeight;
+    // only stick to bottom if the user hasn't scrolled up (lets them read during streaming)
+    if (stickRef.current) el.scrollTop = el.scrollHeight;
   }, [messages]);
+
+  function onChatScroll(e: React.UIEvent<HTMLDivElement>) {
+    const el = e.currentTarget;
+    stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  function copyMsg(i: number, text: string) {
+    copyText(text);
+    setCopied(i);
+    setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400);
+  }
 
   function patchLast(fn: (m: Msg) => Msg) {
     setMessages((prev) => {
@@ -263,6 +276,7 @@ export function App() {
     if (prompt === "/diff") { setInput(""); refreshDiff(); return; }
     if (prompt === "/folder") { setInput(""); changeFolder(); return; }
     if (IMG_RE.test(prompt)) return imageGen(prompt, prompt.replace(IMG_RE, "").trim());
+    stickRef.current = true;
     setInput("");
     setBusy(true);
     setMessages((prev) => [
@@ -454,7 +468,7 @@ export function App() {
           </div>
         ) : (
           <>
-            <div className="chat" ref={scrollRef}>
+            <div className="chat" ref={scrollRef} onScroll={onChatScroll}>
               {messages.map((m, i) => (
                 <div key={i} className={`row ${m.role}`}>
                   <div className="avatar">{m.role === "user" ? "you" : "nd"}</div>
@@ -487,8 +501,16 @@ export function App() {
                             : (m.content ? <Md>{m.content}</Md> : ""))
                         : m.content}
                     </div>
-                    {m.role === "assistant" && m.usage?.total_tokens && (
-                      <div className="usage">{m.usage.total_tokens} tokens</div>
+                    {!m.pending && m.content && (
+                      <div className="msg-actions">
+                        <button className="msg-act" onClick={() => copyMsg(i, m.content)} title="Скопировать">
+                          <Icon name={copied === i ? "check" : "copy"} size={13} />
+                          {copied === i ? "скопировано" : "копировать"}
+                        </button>
+                        {m.role === "assistant" && m.usage?.total_tokens != null && (
+                          <span className="usage">· {m.usage.total_tokens} tokens</span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
