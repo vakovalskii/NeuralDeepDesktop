@@ -100,6 +100,41 @@ export async function restartApp(): Promise<void> {
   if (isTauri) await (await core()).invoke("restart_app");
 }
 
+/** Whether the user has signed in (a hub key is saved). Tauri-only. */
+export async function hasHubKey(): Promise<boolean> {
+  try { if (isTauri) return (await (await core()).invoke("has_hub_key")) as boolean; }
+  catch { /* */ }
+  return true; // browser dev: assume configured
+}
+
+/** Save the user's hub key after sign-in. Tauri-only. */
+export async function setHubKey(key: string): Promise<void> {
+  await (await core()).invoke("set_hub_key", { key });
+}
+
+export interface DeviceEvent {
+  kind: "code" | "done";
+  user_code?: string;
+  url?: string;
+  ok?: boolean;
+  message?: string;
+}
+
+/** RFC 8628 device login against the hub. Streams the user code, then the result. Tauri-only. */
+export async function deviceLogin(onEvent: (e: DeviceEvent) => void): Promise<void> {
+  if (!isTauri) return;
+  const { invoke, Channel } = await core();
+  const ch = new Channel<DeviceEvent>();
+  ch.onmessage = onEvent;
+  await invoke("device_login", { onEvent: ch });
+}
+
+/** Open a URL in the default browser. Tauri-only. */
+export async function openUrl(url: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("open_url", { url });
+  else window.open(url, "_blank");
+}
+
 export async function pickWorkspace(): Promise<string | null> {
   try {
     if (isTauri) return (await (await core()).invoke("pick_workspace")) as string | null;

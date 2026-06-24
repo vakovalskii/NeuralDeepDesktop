@@ -906,14 +906,12 @@ enum ProvisionEvent {
     Done { ok: bool, message: String },
 }
 
-/// Point the freshly-installed config at the NeuralDeep hub + set a loopback key.
-fn write_hub_config(hub_key: &str) {
-    let home = hermes_home();
-    let cfg_path = home.join("config.yaml");
+/// Rewrite the top-level `model:` block to point at the hub with the given key.
+fn set_model_block(hub_key: &str) {
+    let cfg_path = hermes_home().join("config.yaml");
     let model_block = format!(
         "model:\n  default: qwen3.6-35b-a3b\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
     );
-    // Replace the top-level `model:` block (from `model:` up to the next column-0 key).
     let txt = std::fs::read_to_string(&cfg_path).unwrap_or_default();
     let lines: Vec<&str> = txt.lines().collect();
     let mut out = String::new();
@@ -940,15 +938,147 @@ fn write_hub_config(hub_key: &str) {
         out = format!("{model_block}{out}");
     }
     let _ = std::fs::write(&cfg_path, out);
+}
 
-    // Loopback API_SERVER_KEY in .env (last assignment wins for dotenv loaders).
-    let env_path = home.join(".env");
+/// Read the current hub key from the config (empty until the user signs in).
+fn current_hub_key() -> String {
+    if let Ok(txt) = std::fs::read_to_string(hermes_home().join("config.yaml")) {
+        let mut in_model = false;
+        for line in txt.lines() {
+            if line.starts_with("model:") {
+                in_model = true;
+            } else if in_model && !line.is_empty() && !line.starts_with(|c: char| c == ' ' || c == '\t') {
+                in_model = false;
+            }
+            if in_model {
+                if let Some(v) = line.trim().strip_prefix("api_key:") {
+                    return v.trim().to_string();
+                }
+            }
+        }
+    }
+    String::new()
+}
+
+/// Point the freshly-installed config at the hub (empty key) + set a loopback key.
+fn write_hub_config(hub_key: &str) {
+    set_model_block(hub_key);
+    let env_path = hermes_home().join(".env");
     let mut env_txt = std::fs::read_to_string(&env_path).unwrap_or_default();
     if !env_txt.is_empty() && !env_txt.ends_with('\n') {
         env_txt.push('\n');
     }
     env_txt.push_str(&format!("API_SERVER_KEY={}\n", gen_key()));
     let _ = std::fs::write(&env_path, env_txt);
+}
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum DeviceEvent {
+    Code { user_code: String, url: String },
+    Done { ok: bool, message: String },
+}
+
+/// RFC 8628 device-authorization against the hub: start → open browser + show the
+/// user code → poll until the user approves → save the per-device key. App restarts after.
+#[tauri::command]
+async fn device_login(on_event: Channel<DeviceEvent>) -> Result<(), String> {
+    let client = reqwest::Client::new();
+    let start: serde_json::Value = client
+        .post("https://hub.neuraldeep.ru/api/cli/device/start")
+        .json(&serde_json::json!({ "client": "neural-deep-desktop", "scope": "inference" }))
+        .timeout(std::time::Duration::from_secs(15))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let device_code = start["device_code"].as_str().unwrap_or("").to_string();
+    if device_code.is_empty() {
+        return Err("device/start не вернул код".into());
+    }
+    let user_code = start["user_code"].as_str().unwrap_or("").to_string();
+    let url = start["verification_uri_complete"]
+        .as_str()
+        .or_else(|| start["verification_uri"].as_str())
+        .unwrap_or("https://hub.neuraldeep.ru/app/device")
+        .to_string();
+    let mut interval = start["interval"].as_u64().unwrap_or(5).max(2);
+    let expires = start["expires_in"].as_u64().unwrap_or(900);
+
+    let _ = Command::new("open").arg(&url).spawn();
+    on_event
+        .send(DeviceEvent::Code { user_code, url })
+        .ok();
+
+    let mut elapsed = 0u64;
+    loop {
+        tokio::time::sleep(std::time::Duration::from_secs(interval)).await;
+        elapsed += interval;
+        if elapsed > expires {
+            on_event.send(DeviceEvent::Done { ok: false, message: "Время вышло — попробуй ещё раз".into() }).ok();
+            return Ok(());
+        }
+        let j: serde_json::Value = client
+            .post("https://hub.neuraldeep.ru/api/cli/device/token")
+            .json(&serde_json::json!({ "device_code": device_code }))
+            .timeout(std::time::Duration::from_secs(15))
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .json()
+            .await
+            .map_err(|e| e.to_string())?;
+        if let Some(token) = j["access_token"].as_str() {
+            set_model_block(token);
+            on_event.send(DeviceEvent::Done { ok: true, message: "ok".into() }).ok();
+            return Ok(());
+        }
+        match j["error"].as_str().unwrap_or("") {
+            "authorization_pending" => continue,
+            "slow_down" => {
+                interval += 5;
+                continue;
+            }
+            "access_denied" => {
+                on_event.send(DeviceEvent::Done { ok: false, message: "Вход отклонён".into() }).ok();
+                return Ok(());
+            }
+            "expired_token" => {
+                on_event.send(DeviceEvent::Done { ok: false, message: "Код истёк — попробуй ещё раз".into() }).ok();
+                return Ok(());
+            }
+            _ => continue,
+        }
+    }
+}
+
+/// Save the user's hub key (after sign-in) into the config. Caller restarts the app.
+#[tauri::command]
+fn set_hub_key(key: String) -> Result<(), String> {
+    let key = key.trim();
+    if !key.starts_with("sk-") || key.len() < 12 {
+        return Err("Это не похоже на ключ NeuralDeep (должен начинаться с sk-)".into());
+    }
+    set_model_block(key);
+    Ok(())
+}
+
+/// Whether the user has signed in (a hub key is present in the config).
+#[tauri::command]
+fn has_hub_key() -> bool {
+    !current_hub_key().is_empty()
+}
+
+/// Open a URL in the user's default browser.
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// First-run install: fetch the official installer, run it into our isolated home,
@@ -971,7 +1101,9 @@ async fn provision(on_event: Channel<ProvisionEvent>) -> Result<(), String> {
     std::fs::write(&script_path, script).map_err(|e| e.to_string())?;
 
     let on2 = on_event.clone();
-    let hub_key = option_env!("ND_HUB_KEY").unwrap_or("").to_string();
+    // No baked key — the user signs in after install (set_hub_key). The model block
+    // is written with an empty api_key; the login screen fills it in.
+    let hub_key = String::new();
     let res = tauri::async_runtime::spawn_blocking(move || -> Result<(), String> {
         use std::io::{BufRead, BufReader};
         on2.send(ProvisionEvent::Stage { stage: "install".into() }).ok();
@@ -1083,6 +1215,10 @@ pub fn run() {
             provision,
             restart_app,
             backend_status,
+            set_hub_key,
+            has_hub_key,
+            open_url,
+            device_login,
             create_session,
             chat_stream
         ])

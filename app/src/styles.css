@@ -418,3 +418,18 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 
 .msg-act.on { color: var(--green-bright); }
 .msg-act:disabled { opacity: .4; cursor: default; }
+
+/* sign-in key entry */
+.key-row { display: flex; gap: 8px; margin-top: 18px; }
+.key-input { flex: 1; margin-bottom: 0 !important; font-family: ui-monospace, Menlo, monospace; }
+
+/* device-login code */
+.device-code {
+  font-family: ui-monospace, Menlo, monospace; font-size: 30px; font-weight: 700; letter-spacing: 6px;
+  color: var(--green-bright); text-align: center; margin: 6px 0 14px; padding: 14px;
+  background: #06080a; border: 1px solid var(--green-dim); border-radius: 12px;
+  box-shadow: var(--hi), inset 0 0 24px -8px rgba(0,194,89,.4);
+}
+.setup-link { display: block; margin: 14px auto 0; background: none; border: none; color: var(--muted-2);
+  font-family: inherit; font-size: 12.5px; cursor: pointer; text-decoration: underline; }
+.setup-link:hover { color: var(--green-bright); }

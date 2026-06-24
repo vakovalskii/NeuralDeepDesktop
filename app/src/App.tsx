@@ -5,6 +5,7 @@ import {
   saveImage, openImage, applyConfig, setSandbox,
   deleteSession, renameSession, generateTitle, copyText,
   backendStatus, provision, restartApp,
+  hasHubKey, setHubKey, openUrl, deviceLogin,
   speak, stopSpeak, transcribe, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
@@ -89,10 +90,15 @@ export function App() {
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
-  const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "ready">("checking");
+  const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "login" | "ready">("checking");
   const [provStage, setProvStage] = useState("download");
   const [provLog, setProvLog] = useState<string[]>([]);
   const [provError, setProvError] = useState<string | null>(null);
+  const [keyInput, setKeyInput] = useState("");
+  const [keyError, setKeyError] = useState<string | null>(null);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [device, setDevice] = useState<{ user_code: string; url: string } | null>(null);
+  const [showManual, setShowManual] = useState(false);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -237,10 +243,47 @@ export function App() {
     stickRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
   }
 
-  // First-run gate: decide whether Hermes needs to be installed before the app works.
+  // First-run gate: install Hermes → sign in → ready.
   useEffect(() => {
-    backendStatus().then((st) => setBoot(st === "needs_provision" ? "needs" : "ready"));
+    (async () => {
+      const st = await backendStatus();
+      if (st === "needs_provision") { setBoot("needs"); return; }
+      setBoot((await hasHubKey()) ? "ready" : "login");
+    })();
   }, []);
+
+  async function submitKey() {
+    const k = keyInput.trim();
+    if (!k) return;
+    setKeyBusy(true);
+    setKeyError(null);
+    try {
+      await setHubKey(k);
+      await restartApp(); // relaunch so the gateway + host pick up the key
+    } catch (e: any) {
+      setKeyError(e?.toString?.().replace(/^.*Error: /, "") ?? "Не удалось сохранить ключ");
+      setKeyBusy(false);
+    }
+  }
+
+  async function runDeviceLogin() {
+    setKeyBusy(true);
+    setKeyError(null);
+    setDevice(null);
+    try {
+      await deviceLogin((e) => {
+        if (e.kind === "code") setDevice({ user_code: e.user_code ?? "", url: e.url ?? "" });
+        else if (e.kind === "done") {
+          if (e.ok) { restartApp(); }
+          else { setKeyError(e.message ?? "Не удалось войти"); setKeyBusy(false); setDevice(null); }
+        }
+      });
+    } catch (err: any) {
+      setKeyError(String(err));
+      setKeyBusy(false);
+      setDevice(null);
+    }
+  }
 
   async function runProvision() {
     setBoot("provisioning");
@@ -522,6 +565,61 @@ export function App() {
       </div>
     </div>
   );
+
+  if (boot === "login") {
+    return (
+      <div className="setup">
+        <div className="setup-card">
+          <div className="logo setup-logo">ND</div>
+          <h1>Вход в NeuralDeep</h1>
+          {device ? (
+            <>
+              <p className="setup-sub">
+                Подтверди вход в открывшемся браузере. Код устройства:
+              </p>
+              <div className="device-code">{device.user_code}</div>
+              <div className="setup-stage active" style={{ justifyContent: "center" }}>
+                <span className="spinner" /> ждём подтверждения…
+              </div>
+              <button className="msg-act" style={{ margin: "10px auto 0" }} onClick={() => openUrl(device.url)}>
+                <Icon name="shield" size={13} /> открыть окно входа снова
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="setup-sub">
+                Войди через аккаунт NeuralDeep — откроется браузер, подтверждаешь устройство,
+                и приложение получает свой ключ. Мастер-ключ нигде не светится и в бинарь не зашивается.
+              </p>
+              <button className="setup-go" onClick={runDeviceLogin} disabled={keyBusy}>
+                {keyBusy ? <span className="spinner" /> : <Icon name="shield" size={16} />}
+                {keyBusy ? "Открываю вход…" : "Войти через NeuralDeep"}
+              </button>
+              {keyError && <div className="setup-error"><Icon name="alert" size={14} /> {keyError}</div>}
+              <button className="setup-link" onClick={() => setShowManual((v) => !v)}>
+                или вставить ключ вручную
+              </button>
+              {showManual && (
+                <div className="key-row">
+                  <input
+                    className="modal-input key-input"
+                    type="password"
+                    placeholder="sk-…"
+                    value={keyInput}
+                    onChange={(e) => setKeyInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") submitKey(); }}
+                  />
+                  <button className="modal-btn primary" onClick={submitKey} disabled={keyBusy || !keyInput.trim()}>
+                    {keyBusy ? <span className="spinner" /> : "Войти"}
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   if (boot === "needs" || boot === "provisioning") {
     const STAGES: [string, string][] = [
