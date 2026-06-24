@@ -81,6 +81,8 @@ export function App() {
   const [diffOpen, setDiffOpen] = useState(true);
   const [ctxUsed, setCtxUsed] = useState(0);
   const [restarting, setRestarting] = useState(false);
+  const [del, setDel] = useState<SessionRow | null>(null);
+  const [ren, setRen] = useState<{ s: SessionRow; value: string } | null>(null);
   const sessionRef = useRef<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -107,15 +109,25 @@ export function App() {
 
   function renameChat(s: SessionRow, e: React.MouseEvent) {
     e.stopPropagation();
-    const t = window.prompt("Название чата:", titleOf(s));
-    if (t == null || !t.trim()) return;
-    saveTitle(s.id, t.trim());
-    renameSession(s.id, t.trim()).catch(() => {});
+    setRen({ s, value: titleOf(s) });
+  }
+  function delChat(s: SessionRow, e: React.MouseEvent) {
+    e.stopPropagation();
+    setDel(s);
   }
 
-  async function delChat(s: SessionRow, e: React.MouseEvent) {
-    e.stopPropagation();
-    if (!window.confirm(`Удалить чат «${titleOf(s)}»?`)) return;
+  function commitRename() {
+    if (!ren || !ren.value.trim()) { setRen(null); return; }
+    const { s, value } = ren;
+    saveTitle(s.id, value.trim());
+    renameSession(s.id, value.trim()).catch(() => {});
+    setRen(null);
+  }
+
+  async function commitDelete() {
+    if (!del) return;
+    const s = del;
+    setDel(null);
     await deleteSession(s.id).catch(() => {});
     setPins((p) => p.filter((x) => x !== s.id));
     setTitles((prev) => {
@@ -558,6 +570,39 @@ export function App() {
             </div>
           )}
         </aside>
+      )}
+
+      {/* Modal: rename / delete confirm (WebView blocks native prompt/confirm) */}
+      {(del || ren) && (
+        <div className="modal-overlay" onClick={() => { setDel(null); setRen(null); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            {ren ? (
+              <>
+                <div className="modal-title">Переименовать чат</div>
+                <input
+                  className="modal-input"
+                  autoFocus
+                  value={ren.value}
+                  onChange={(e) => setRen({ ...ren, value: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === "Enter") commitRename(); if (e.key === "Escape") setRen(null); }}
+                />
+                <div className="modal-actions">
+                  <button className="modal-btn" onClick={() => setRen(null)}>Отмена</button>
+                  <button className="modal-btn primary" onClick={commitRename}>Сохранить</button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="modal-title">Удалить чат?</div>
+                <div className="modal-text">«{del && titleOf(del)}» — действие необратимо.</div>
+                <div className="modal-actions">
+                  <button className="modal-btn" onClick={() => setDel(null)}>Отмена</button>
+                  <button className="modal-btn danger" onClick={commitDelete}>Удалить</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );

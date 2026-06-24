@@ -327,3 +327,31 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .recent:hover .recent-act { opacity: .65; }
 .recent-act:hover { opacity: 1 !important; color: var(--green-bright); }
 .recent-act.danger:hover { color: #e0738a; }
+
+/* modal (custom — WebView blocks native confirm/prompt) */
+.modal-overlay {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center;
+  background: rgba(0,0,0,.6);
+}
+.modal {
+  width: 380px; max-width: 90vw; background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border: 1px solid var(--border-2); border-radius: 16px; padding: 18px 18px 14px;
+  box-shadow: var(--hi), var(--sh-3);
+}
+.modal-title { font-size: 15px; font-weight: 700; margin-bottom: 10px; }
+.modal-text { font-size: 13px; color: var(--muted); line-height: 1.5; margin-bottom: 14px; }
+.modal-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border-2); border-radius: 9px;
+  padding: 9px 11px; color: var(--text); font-family: inherit; font-size: 14px; outline: none; margin-bottom: 14px;
+}
+.modal-input:focus { border-color: var(--green); box-shadow: var(--glow); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.modal-btn {
+  background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text);
+  border-radius: 9px; padding: 7px 14px; font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.modal-btn:hover { border-color: var(--muted-2); }
+.modal-btn.primary { background: linear-gradient(180deg, var(--green-bright), var(--green)); color: #001b0d; border: none; }
+.modal-btn.primary:hover { filter: brightness(1.1); }
+.modal-btn.danger { background: linear-gradient(180deg, #c0394f, #8a2030); color: #fff; border: none; }
+.modal-btn.danger:hover { filter: brightness(1.12); }

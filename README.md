@@ -2,7 +2,9 @@
 
 **A very light desktop wrapper over a full-power agent harness.**
 
-![Neural Deep Desktop](docs/img/neuraldeep-desktop.png)
+![Neural Deep Desktop — chat](docs/img/screenshot-chat.png)
+
+![Neural Deep Desktop — home](docs/img/screenshot-hero.png)
 
 Hermes Agent is the **core** (memory, skills, planning, orchestration). It pulls in
 **ndcode** (NeuralDeepCode — your MIT fork of opencode) as the coding worker when needed.
