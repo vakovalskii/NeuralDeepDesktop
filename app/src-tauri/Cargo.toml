@@ -1,6 +1,6 @@
 [package]
 name = "neural-deep-desktop"
-version = "0.0.5"
+version = "0.0.6"
 description = "Neural Deep Desktop — thin wrapper over the Hermes harness, routed to the NeuralDeep hub."
 edition = "2021"
 rust-version = "1.77"
