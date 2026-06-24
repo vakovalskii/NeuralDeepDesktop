@@ -277,22 +277,38 @@ export function App() {
   function drawWave() {
     const an = analyserRef.current;
     const canvas = waveCanvasRef.current;
-    if (!an || !canvas) return;
+    if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    const buf = new Uint8Array(an.fftSize);
-    an.getByteTimeDomainData(buf);
-    const w = canvas.width, h = canvas.height;
-    ctx.clearRect(0, 0, w, h);
-    const bars = 56, step = Math.floor(buf.length / bars);
-    ctx.fillStyle = "#00c259";
+    if (!ctx) { rafRef.current = requestAnimationFrame(drawWave); return; }
+    const dpr = window.devicePixelRatio || 1;
+    const cw = canvas.clientWidth || 600;
+    const ch = canvas.clientHeight || 44;
+    if (canvas.width !== Math.round(cw * dpr) || canvas.height !== Math.round(ch * dpr)) {
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, cw, ch);
+    const bars = 64, gap = 3;
+    const bw = (cw - gap * (bars - 1)) / bars;
+    let bins: Uint8Array;
+    if (an) {
+      bins = new Uint8Array(an.frequencyBinCount);
+      an.getByteFrequencyData(bins);
+    } else {
+      bins = new Uint8Array(bars);
+    }
     for (let i = 0; i < bars; i++) {
-      let sum = 0;
-      for (let j = 0; j < step; j++) sum += Math.abs(buf[i * step + j] - 128);
-      const amp = sum / step / 128;
-      const bh = Math.max(2, Math.min(h, amp * h * 2.4));
-      const x = i * (w / bars);
-      ctx.fillRect(x + 1, (h - bh) / 2, w / bars - 2, bh);
+      const idx = Math.floor((i / bars) * bins.length * 0.7);
+      const v = (bins[idx] || 0) / 255;
+      const bh = Math.max(3, v * v * ch); // squared → punchier peaks
+      const x = i * (bw + gap);
+      const y = (ch - bh) / 2;
+      const grad = ctx.createLinearGradient(0, y, 0, y + bh);
+      grad.addColorStop(0, "#00e065");
+      grad.addColorStop(1, "#007a3d");
+      ctx.fillStyle = grad;
+      ctx.fillRect(x, y, bw, bh);
     }
     rafRef.current = requestAnimationFrame(drawWave);
   }

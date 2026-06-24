@@ -410,7 +410,7 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .wave-wrap { display: flex; align-items: center; gap: 11px; padding: 8px 6px 4px; }
 .wave-dot { width: 9px; height: 9px; border-radius: 50%; background: #ff4d63; flex-shrink: 0;
   box-shadow: 0 0 10px #ff4d63; animation: micpulse 1.1s ease-in-out infinite; }
-.wave { flex: 1; height: 40px; min-width: 0; }
+.wave { flex: 1; height: 44px; min-width: 0; }
 .wave-stop { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
   background: var(--panel-2); border: 1px solid var(--border-2); color: var(--text);
   border-radius: 9px; padding: 6px 12px; font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
