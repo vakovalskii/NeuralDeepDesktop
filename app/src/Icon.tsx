@@ -4,7 +4,8 @@
 type Name =
   | "plus" | "folder" | "send" | "spark" | "image" | "check"
   | "brain" | "puzzle" | "pin" | "pinOff" | "tool" | "alert"
-  | "search" | "chevron" | "dot" | "shield" | "box" | "gauge" | "pencil" | "trash" | "copy";
+  | "search" | "chevron" | "dot" | "shield" | "box" | "gauge" | "pencil" | "trash" | "copy"
+  | "mic" | "volume" | "stop";
 
 const P: Record<Name, JSX.Element> = {
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
@@ -28,6 +29,9 @@ const P: Record<Name, JSX.Element> = {
   pencil: <><path d="M4 20h4L18 10a2 2 0 0 0-3-3L5 17z" /><path d="m13.5 6.5 3 3" /></>,
   trash: <><path d="M4 7h16" /><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /><path d="m6 7 1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13" /></>,
   copy: <><rect x="9" y="9" width="11" height="11" rx="2" /><path d="M5 15V5a2 2 0 0 1 2-2h10" /></>,
+  mic: <><rect x="9" y="2.5" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" /></>,
+  volume: <><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M16 9a3.5 3.5 0 0 1 0 6" /><path d="M19 6a7 7 0 0 1 0 12" /></>,
+  stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
 };
 
 export function Icon({ name, size = 18, className, fill }: { name: Name; size?: number; className?: string; fill?: boolean }) {

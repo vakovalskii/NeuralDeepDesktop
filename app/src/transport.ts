@@ -56,6 +56,20 @@ export async function getHealth(): Promise<Health | null> {
   }
 }
 
+/** Speak text aloud via the macOS `say` engine (Milena for Russian). Tauri-only. */
+export async function speak(text: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("speak", { text });
+}
+export async function stopSpeak(): Promise<void> {
+  if (isTauri) await (await core()).invoke("stop_speak");
+}
+
+/** Transcribe a recorded audio data: URL via the hub Whisper endpoint. Tauri-only. */
+export async function transcribe(audioDataUrl: string): Promise<string> {
+  if (isTauri) return (await (await core()).invoke("transcribe", { audio: audioDataUrl })) as string;
+  return "";
+}
+
 export interface ProvisionEvent {
   kind: "stage" | "log" | "done";
   stage?: string;

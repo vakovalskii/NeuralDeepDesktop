@@ -4,7 +4,8 @@ import {
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
   saveImage, openImage, applyConfig, setSandbox,
   deleteSession, renameSession, generateTitle, copyText,
-  backendStatus, provision, restartApp, isTauri,
+  backendStatus, provision, restartApp,
+  speak, stopSpeak, transcribe, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -85,6 +86,9 @@ export function App() {
   const [del, setDel] = useState<SessionRow | null>(null);
   const [ren, setRen] = useState<{ s: SessionRow; value: string } | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const [speaking, setSpeaking] = useState<number | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
   const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "ready">("checking");
   const [provStage, setProvStage] = useState("download");
   const [provLog, setProvLog] = useState<string[]>([]);
@@ -93,6 +97,13 @@ export function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const stickRef = useRef(true); // stick to bottom unless the user scrolled up
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const waveCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const refreshSessions = () => getSessions().then((s) => setSessions(s.slice(0, 40)));
 
@@ -256,6 +267,88 @@ export function App() {
     setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400);
   }
 
+  function speakMsg(i: number, text: string) {
+    if (speaking === i) { stopSpeak(); setSpeaking(null); return; }
+    stopSpeak();
+    speak(text);
+    setSpeaking(i);
+  }
+
+  function drawWave() {
+    const an = analyserRef.current;
+    const canvas = waveCanvasRef.current;
+    if (!an || !canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const buf = new Uint8Array(an.fftSize);
+    an.getByteTimeDomainData(buf);
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const bars = 56, step = Math.floor(buf.length / bars);
+    ctx.fillStyle = "#00c259";
+    for (let i = 0; i < bars; i++) {
+      let sum = 0;
+      for (let j = 0; j < step; j++) sum += Math.abs(buf[i * step + j] - 128);
+      const amp = sum / step / 128;
+      const bh = Math.max(2, Math.min(h, amp * h * 2.4));
+      const x = i * (w / bars);
+      ctx.fillRect(x + 1, (h - bh) / 2, w / bars - 2, bh);
+    }
+    rafRef.current = requestAnimationFrame(drawWave);
+  }
+
+  async function startRec() {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mr.ondataavailable = (e) => { if (e.data.size) chunksRef.current.push(e.data); };
+      mr.onstop = onRecStop;
+      mediaRecRef.current = mr;
+      mr.start();
+      const ctx = new AudioContext();
+      const src = ctx.createMediaStreamSource(stream);
+      const an = ctx.createAnalyser();
+      an.fftSize = 1024;
+      src.connect(an);
+      audioCtxRef.current = ctx;
+      analyserRef.current = an;
+      setRecording(true);
+      rafRef.current = requestAnimationFrame(drawWave);
+    } catch {
+      alert("Нет доступа к микрофону. Разрешите его в Системных настройках → Конфиденциальность → Микрофон.");
+    }
+  }
+
+  function stopRec() {
+    mediaRecRef.current?.stop();
+  }
+
+  async function onRecStop() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    audioCtxRef.current?.close().catch(() => {});
+    setRecording(false);
+    const blob = new Blob(chunksRef.current, { type: mediaRecRef.current?.mimeType || "audio/webm" });
+    if (!blob.size) return;
+    setTranscribing(true);
+    try {
+      const dataUrl: string = await new Promise((res) => {
+        const fr = new FileReader();
+        fr.onloadend = () => res(fr.result as string);
+        fr.readAsDataURL(blob);
+      });
+      const text = await transcribe(dataUrl);
+      if (text) setInput((v) => (v ? v.trim() + " " : "") + text);
+    } catch {
+      /* hub error */
+    } finally {
+      setTranscribing(false);
+      inputRef.current?.focus();
+    }
+  }
+
   function patchLast(fn: (m: Msg) => Msg) {
     setMessages((prev) => {
       const next = [...prev];
@@ -386,9 +479,26 @@ export function App() {
         }}
         rows={big ? 2 : 1}
       />
+      {recording && (
+        <div className="wave-wrap">
+          <span className="wave-dot" />
+          <canvas ref={waveCanvasRef} className="wave" width={640} height={40} />
+          <button className="wave-stop" onClick={stopRec} title="Остановить запись">
+            <Icon name="stop" size={14} /> готово
+          </button>
+        </div>
+      )}
       <div className="composer-row">
         <button className="composer-hint" onClick={changeFolder} disabled={!isTauri} title="Сменить рабочую папку агента">
           <Icon name="folder" size={15} /> {workspace ?? (isTauri ? "…" : "n/a")}
+        </button>
+        <button
+          className={`mic ${recording ? "rec" : ""}`}
+          onClick={recording ? stopRec : startRec}
+          disabled={!isTauri || transcribing}
+          title={recording ? "Остановить" : "Голосовой ввод"}
+        >
+          {transcribing ? <span className="spinner" /> : <Icon name="mic" size={17} />}
         </button>
         <button className="send" onClick={() => send(input)} disabled={!online || !input.trim() || busy}>
           {busy ? <span className="spinner" /> : <Icon name="send" size={18} />}
@@ -587,6 +697,12 @@ export function App() {
                           <Icon name={copied === i ? "check" : "copy"} size={13} />
                           {copied === i ? "скопировано" : "копировать"}
                         </button>
+                        {m.role === "assistant" && (
+                          <button className={`msg-act ${speaking === i ? "on" : ""}`} onClick={() => speakMsg(i, m.content)} disabled={!isTauri} title="Озвучить">
+                            <Icon name={speaking === i ? "stop" : "volume"} size={13} />
+                            {speaking === i ? "стоп" : "озвучить"}
+                          </button>
+                        )}
                         {m.role === "assistant" && m.usage?.total_tokens != null && (
                           <span className="usage">· {m.usage.total_tokens} tokens</span>
                         )}

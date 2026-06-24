@@ -542,6 +542,76 @@ fn copy_text(text: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Holds the current `say` child so playback can be stopped.
+#[derive(Default)]
+struct Tts(Mutex<Option<Child>>);
+
+/// Speak text via the macOS `say` engine — Milena (ru) for Cyrillic, else Samantha.
+#[tauri::command]
+fn speak(text: String, tts: State<'_, Tts>) -> Result<(), String> {
+    if let Some(mut c) = tts.0.lock().unwrap().take() {
+        let _ = c.kill();
+    }
+    let cyrillic = text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c));
+    let voice = if cyrillic { "Milena" } else { "Samantha" };
+    let child = Command::new("say")
+        .args(["-v", voice, "-r", "210"])
+        .arg(&text)
+        .stdin(Stdio::null())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    *tts.0.lock().unwrap() = Some(child);
+    Ok(())
+}
+
+/// Stop any in-progress speech.
+#[tauri::command]
+fn stop_speak(tts: State<'_, Tts>) -> Result<(), String> {
+    if let Some(mut c) = tts.0.lock().unwrap().take() {
+        let _ = c.kill();
+    }
+    let _ = Command::new("pkill").arg("-x").arg("say").status();
+    Ok(())
+}
+
+/// Transcribe recorded audio (data: URL) via the hub Whisper endpoint.
+#[tauri::command]
+async fn transcribe(audio: String, config: State<'_, Config>) -> Result<String, String> {
+    let bytes = decode_data_url(&audio).ok_or("bad audio data url")?;
+    let mime = audio
+        .split(';')
+        .next()
+        .and_then(|s| s.strip_prefix("data:"))
+        .unwrap_or("audio/webm")
+        .to_string();
+    let ext = if mime.contains("mp4") || mime.contains("aac") {
+        "m4a"
+    } else if mime.contains("wav") {
+        "wav"
+    } else {
+        "webm"
+    };
+    let part = reqwest::multipart::Part::bytes(bytes)
+        .file_name(format!("audio.{ext}"))
+        .mime_str(&mime)
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::multipart::Form::new()
+        .text("model", "whisper-1")
+        .part("file", part);
+    let j: serde_json::Value = reqwest::Client::new()
+        .post("https://api.neuraldeep.ru/v1/audio/transcriptions")
+        .header("Authorization", format!("Bearer {}", config.hub_key))
+        .multipart(form)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(j["text"].as_str().unwrap_or("").trim().to_string())
+}
+
 /// Open a native folder picker and set the agent working directory.
 #[tauri::command]
 async fn pick_workspace(ws: State<'_, WorkspaceState>) -> Result<Option<String>, String> {
@@ -986,6 +1056,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(cfg.clone())
         .manage(Backend::default())
+        .manage(Tts::default())
         .manage(WorkspaceState(Mutex::new(cfg.workspace.clone())))
         .invoke_handler(tauri::generate_handler![
             hermes_health,
@@ -998,6 +1069,9 @@ pub fn run() {
             generate_title,
             pick_workspace,
             copy_text,
+            speak,
+            stop_speak,
+            transcribe,
             workspace_diff,
             generate_image,
             save_image,

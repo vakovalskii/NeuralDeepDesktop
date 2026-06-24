@@ -39,7 +39,8 @@
     ],
     "macOS": {
       "signingIdentity": "Developer ID Application: Valeriy Kovalsky (A933C2TJXU)",
-      "minimumSystemVersion": "10.15"
+      "minimumSystemVersion": "10.15",
+      "entitlements": "Entitlements.plist"
     },
     "windows": {
       "certificateThumbprint": null,
