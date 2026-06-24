@@ -134,7 +134,10 @@ export function App() {
   }
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+    const el = scrollRef.current;
+    if (!el) return;
+    // instant scroll (smooth on every streamed token churns the compositor → jank)
+    el.scrollTop = el.scrollHeight;
   }, [messages]);
 
   function patchLast(fn: (m: Msg) => Msg) {

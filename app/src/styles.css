@@ -101,7 +101,7 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .hero-spark {
   color: var(--green-bright); display: grid; place-items: center; width: 58px; height: 58px;
   border-radius: 16px; background: radial-gradient(120% 120% at 50% 20%, rgba(0,194,89,.14), transparent 70%);
-  box-shadow: var(--glow); filter: drop-shadow(0 0 14px rgba(0,194,89,.5)); animation: float 4s ease-in-out infinite;
+  box-shadow: var(--glow); animation: float 4s ease-in-out infinite;
 }
 @keyframes float { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
 .hero h1 { font-size: 30px; font-weight: 700; letter-spacing: -.5px; margin: 0; text-align: center; text-shadow: 0 2px 20px rgba(0,0,0,.6); }
@@ -110,7 +110,7 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
   width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 2px; margin-top: 6px;
   background: linear-gradient(180deg, rgba(20,23,28,.5), rgba(12,14,17,.5));
   border: 1px solid var(--border); border-radius: 14px; padding: 4px 12px;
-  box-shadow: var(--hi), var(--sh-2); backdrop-filter: blur(6px);
+  box-shadow: var(--hi), var(--sh-2);
 }
 .suggestion {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: none;
@@ -214,7 +214,6 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
   background: linear-gradient(180deg, var(--panel-2), var(--panel));
   border: 1px solid var(--border-2); border-radius: 12px; padding: 5px;
   box-shadow: var(--hi), var(--sh-3); z-index: 30; max-height: 320px; overflow-y: auto;
-  backdrop-filter: blur(8px);
 }
 .cmd-head { font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; color: var(--muted-2); padding: 4px 8px 6px; }
 .cmd-item {
