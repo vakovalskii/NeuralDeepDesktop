@@ -271,7 +271,7 @@ async fn rename_session(
 /// Generate a short chat title from text via a fast hub model.
 #[tauri::command]
 async fn generate_title(text: String, config: State<'_, Config>) -> Result<String, String> {
-    let key = config.hub_key.clone();
+    let key = current_hub_key();
     if key.is_empty() {
         return Err("no hub key".into());
     }
@@ -600,7 +600,7 @@ async fn transcribe(audio: String, config: State<'_, Config>) -> Result<String, 
         .part("file", part);
     let j: serde_json::Value = reqwest::Client::new()
         .post("https://api.neuraldeep.ru/v1/audio/transcriptions")
-        .header("Authorization", format!("Bearer {}", config.hub_key))
+        .header("Authorization", format!("Bearer {}", current_hub_key()))
         .multipart(form)
         .timeout(std::time::Duration::from_secs(60))
         .send()
@@ -630,7 +630,7 @@ async fn pick_workspace(ws: State<'_, WorkspaceState>) -> Result<Option<String>,
 /// Hub subscription / tariff (NeuralDeep hub `/api/cli/status`).
 #[tauri::command]
 async fn subscription(config: State<'_, Config>) -> Result<serde_json::Value, String> {
-    let key = config.hub_key.clone();
+    let key = current_hub_key();
     if key.is_empty() {
         return Err("no hub key".into());
     }
@@ -684,7 +684,7 @@ fn read_yaml_field(section: &str, field: &str) -> Option<String> {
 /// Live usage/limits from the hub (gate.session/week + rolling usage + rouble wallet).
 #[tauri::command]
 async fn usage(config: State<'_, Config>) -> Result<serde_json::Value, String> {
-    let key = config.hub_key.clone();
+    let key = current_hub_key();
     if key.is_empty() {
         return Err("no hub key".into());
     }
@@ -707,7 +707,7 @@ async fn generate_image(
     config: State<'_, Config>,
 ) -> Result<String, String> {
     use base64::Engine;
-    let key = config.hub_key.clone();
+    let key = current_hub_key();
     if key.is_empty() {
         return Err("no hub key".into());
     }

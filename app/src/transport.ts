@@ -100,6 +100,11 @@ export async function restartApp(): Promise<void> {
   if (isTauri) await (await core()).invoke("restart_app");
 }
 
+/** Restart just the Hermes gateway (picks up a new key/config). Tauri-only. */
+export async function restartBackend(): Promise<void> {
+  if (isTauri) await (await core()).invoke("restart_backend");
+}
+
 /** Whether the user has signed in (a hub key is saved). Tauri-only. */
 export async function hasHubKey(): Promise<boolean> {
   try { if (isTauri) return (await (await core()).invoke("has_hub_key")) as boolean; }

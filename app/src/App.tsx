@@ -5,7 +5,7 @@ import {
   saveImage, openImage, applyConfig, setSandbox,
   deleteSession, renameSession, generateTitle, copyText,
   backendStatus, provision, restartApp,
-  hasHubKey, setHubKey, openUrl, deviceLogin,
+  hasHubKey, setHubKey, openUrl, deviceLogin, restartBackend,
   speak, stopSpeak, transcribe, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
@@ -252,6 +252,17 @@ export function App() {
     })();
   }, []);
 
+  // After a key is saved: restart the gateway so it uses the new key, then enter the app.
+  // (No app.restart() — that was unreliable and left the user re-binding devices endlessly.)
+  async function afterLogin() {
+    setBoot("checking");
+    try { await restartBackend(); } catch { /* gateway will retry */ }
+    setDevice(null);
+    setKeyBusy(false);
+    setKeyInput("");
+    setBoot("ready");
+  }
+
   async function submitKey() {
     const k = keyInput.trim();
     if (!k) return;
@@ -259,7 +270,7 @@ export function App() {
     setKeyError(null);
     try {
       await setHubKey(k);
-      await restartApp(); // relaunch so the gateway + host pick up the key
+      await afterLogin();
     } catch (e: any) {
       setKeyError(e?.toString?.().replace(/^.*Error: /, "") ?? "Не удалось сохранить ключ");
       setKeyBusy(false);
@@ -274,7 +285,7 @@ export function App() {
       await deviceLogin((e) => {
         if (e.kind === "code") setDevice({ user_code: e.user_code ?? "", url: e.url ?? "" });
         else if (e.kind === "done") {
-          if (e.ok) { restartApp(); }
+          if (e.ok) { afterLogin(); }
           else { setKeyError(e.message ?? "Не удалось войти"); setKeyBusy(false); setDevice(null); }
         }
       });
