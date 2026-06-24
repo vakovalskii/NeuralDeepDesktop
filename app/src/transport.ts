@@ -130,6 +130,24 @@ export async function getUsage(): Promise<Usage | null> {
   return null;
 }
 
+/** Delete a Hermes session. Tauri-only. */
+export async function deleteSession(id: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("delete_session", { sessionId: id });
+}
+
+/** Rename a Hermes session. Tauri-only. */
+export async function renameSession(id: string, title: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("rename_session", { sessionId: id, title });
+}
+
+/** Generate a short chat title from text via a fast hub model. Tauri-only. */
+export async function generateTitle(text: string): Promise<string | null> {
+  try {
+    if (isTauri) return (await (await core()).invoke("generate_title", { text })) as string;
+  } catch { /* best-effort */ }
+  return null;
+}
+
 export async function getAgentInfo(): Promise<AgentInfo | null> {
   try {
     if (isTauri) return (await (await core()).invoke("agent_info")) as AgentInfo;

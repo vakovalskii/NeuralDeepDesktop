@@ -210,6 +210,76 @@ async fn hermes_get(path: String, config: State<'_, Config>) -> Result<serde_jso
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Delete a Hermes session.
+#[tauri::command]
+async fn delete_session(session_id: String, config: State<'_, Config>) -> Result<(), String> {
+    reqwest::Client::new()
+        .delete(format!("{HERMES_BASE}/api/sessions/{session_id}"))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Rename a Hermes session (PATCH title).
+#[tauri::command]
+async fn rename_session(
+    session_id: String,
+    title: String,
+    config: State<'_, Config>,
+) -> Result<(), String> {
+    reqwest::Client::new()
+        .patch(format!("{HERMES_BASE}/api/sessions/{session_id}"))
+        .header("Authorization", format!("Bearer {}", config.api_key))
+        .json(&serde_json::json!({ "title": title }))
+        .timeout(std::time::Duration::from_secs(10))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Generate a short chat title from text via a fast hub model.
+#[tauri::command]
+async fn generate_title(text: String, config: State<'_, Config>) -> Result<String, String> {
+    let key = config.hub_key.clone();
+    if key.is_empty() {
+        return Err("no hub key".into());
+    }
+    let body = serde_json::json!({
+        "model": "gemma-4-31b-noreason",
+        "max_tokens": 24,
+        "messages": [
+            {"role": "system", "content": "Придумай очень короткий заголовок (3-5 слов) для диалога по первому сообщению. Ответь только заголовком, без кавычек и точки."},
+            {"role": "user", "content": text}
+        ]
+    });
+    let j: serde_json::Value = reqwest::Client::new()
+        .post("https://api.neuraldeep.ru/v1/chat/completions")
+        .header("Authorization", format!("Bearer {key}"))
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(20))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())?;
+    let title = j["choices"][0]["message"]["content"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .trim_matches('"')
+        .to_string();
+    if title.is_empty() {
+        Err("empty title".into())
+    } else {
+        Ok(title)
+    }
+}
+
 #[derive(Serialize)]
 struct AgentInfo {
     workspace: String,
@@ -730,6 +800,9 @@ pub fn run() {
             agent_info,
             subscription,
             usage,
+            delete_session,
+            rename_session,
+            generate_title,
             pick_workspace,
             workspace_diff,
             generate_image,

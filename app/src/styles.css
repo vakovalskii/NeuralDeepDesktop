@@ -309,3 +309,21 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .model-select:hover:not(:disabled) { border-color: var(--green); }
 .model-select:disabled { opacity: .55; cursor: default; }
 .model-select option { background: #0c0e11; color: var(--text); }
+
+/* recents search + per-chat actions */
+.recent-search {
+  display: flex; align-items: center; gap: 7px; margin: 0 4px 8px; padding: 6px 9px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 9px; color: var(--muted-2);
+}
+.recent-search input {
+  flex: 1; background: none; border: none; outline: none; color: var(--text);
+  font-family: inherit; font-size: 12.5px; min-width: 0;
+}
+.recent-search input::placeholder { color: var(--muted-2); }
+.recent-act {
+  background: none; border: none; cursor: pointer; opacity: 0; padding: 0 2px; flex-shrink: 0;
+  color: var(--muted-2); display: grid; place-items: center; transition: opacity .12s, color .12s;
+}
+.recent:hover .recent-act { opacity: .65; }
+.recent-act:hover { opacity: 1 !important; color: var(--green-bright); }
+.recent-act.danger:hover { color: #e0738a; }

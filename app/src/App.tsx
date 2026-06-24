@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   getHealth, getAgentInfo, getSubscription, getUsage, getSessions, getSessionMessages,
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
-  saveImage, openImage, applyConfig, setSandbox, isTauri,
+  saveImage, openImage, applyConfig, setSandbox,
+  deleteSession, renameSession, generateTitle, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -11,6 +12,10 @@ import { Icon } from "./Icon";
 const PIN_KEY = "nd.pinnedSessions";
 const loadPins = (): string[] => {
   try { return JSON.parse(localStorage.getItem(PIN_KEY) || "[]"); } catch { return []; }
+};
+const TITLE_KEY = "nd.chatTitles";
+const loadTitles = (): Record<string, string> => {
+  try { return JSON.parse(localStorage.getItem(TITLE_KEY) || "{}"); } catch { return {}; }
 };
 
 type Role = "user" | "assistant";
@@ -69,6 +74,8 @@ export function App() {
   const [showReasoning, setShowReasoning] = useState(true);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [pins, setPins] = useState<string[]>(loadPins);
+  const [titles, setTitles] = useState<Record<string, string>>(loadTitles);
+  const [search, setSearch] = useState("");
   const [skills, setSkills] = useState<SkillRow[]>([]);
   const [diffs, setDiffs] = useState<DiffFile[]>([]);
   const [diffOpen, setDiffOpen] = useState(true);
@@ -87,6 +94,37 @@ export function App() {
       localStorage.setItem(PIN_KEY, JSON.stringify(next));
       return next;
     });
+  }
+
+  function saveTitle(id: string, title: string) {
+    setTitles((prev) => {
+      const next = { ...prev, [id]: title };
+      localStorage.setItem(TITLE_KEY, JSON.stringify(next));
+      return next;
+    });
+  }
+  const titleOf = (s: SessionRow) => titles[s.id] || s.title || s.id.slice(0, 22);
+
+  function renameChat(s: SessionRow, e: React.MouseEvent) {
+    e.stopPropagation();
+    const t = window.prompt("Название чата:", titleOf(s));
+    if (t == null || !t.trim()) return;
+    saveTitle(s.id, t.trim());
+    renameSession(s.id, t.trim()).catch(() => {});
+  }
+
+  async function delChat(s: SessionRow, e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!window.confirm(`Удалить чат «${titleOf(s)}»?`)) return;
+    await deleteSession(s.id).catch(() => {});
+    setPins((p) => p.filter((x) => x !== s.id));
+    setTitles((prev) => {
+      const n = { ...prev }; delete n[s.id];
+      localStorage.setItem(TITLE_KEY, JSON.stringify(n));
+      return n;
+    });
+    if (sessionRef.current === s.id) newChat();
+    refreshSessions();
   }
 
   async function changeFolder() {
@@ -221,8 +259,15 @@ export function App() {
       { role: "assistant", content: "", reasoning: "", tools: [], pending: true },
     ]);
 
+    const wasNew = !sessionRef.current;
     try {
       if (!sessionRef.current) sessionRef.current = await ensureSession();
+      const sid = sessionRef.current!;
+      if (wasNew && !titles[sid]) {
+        generateTitle(prompt).then((t) => {
+          if (t) { saveTitle(sid, t); renameSession(sid, t).catch(() => {}); }
+        });
+      }
       await streamChat(sessionRef.current!, prompt, {
         onDelta: (s) => patchLast((m) => ({ ...m, content: m.content + s })),
         onReasoning: (s) => patchLast((m) => ({ ...m, reasoning: (m.reasoning ?? "") + s })),
@@ -307,25 +352,41 @@ export function App() {
         </div>
         <button className="new-chat" onClick={newChat}><Icon name="plus" size={16} /> Новый чат</button>
         <div className="side-section">Недавние</div>
+        <div className="recent-search">
+          <Icon name="search" size={13} />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Поиск чатов…" />
+        </div>
         <div className="recents">
-          {sessions.length === 0 && <div className="recents-empty">пусто</div>}
-          {[...sessions].sort((a, b) => (pins.includes(b.id) ? 1 : 0) - (pins.includes(a.id) ? 1 : 0)).map((s) => {
-            const pinned = pins.includes(s.id);
-            return (
-              <div
-                key={s.id}
-                className={`recent ${sessionRef.current === s.id ? "active" : ""} ${pinned ? "pinned" : ""}`}
-                onClick={() => openSession(s)}
-                title={`${s.source} · ${s.message_count} msgs`}
-              >
-                <span className="recent-dot" data-src={s.source} />
-                <span className="recent-title">{s.title || s.id.slice(0, 22)}</span>
-                <button className="pin-btn" onClick={(e) => togglePin(s.id, e)} title={pinned ? "Открепить" : "Закрепить"}>
-                  <Icon name={pinned ? "pin" : "pinOff"} size={14} fill={pinned} />
-                </button>
-              </div>
-            );
-          })}
+          {(() => {
+            const q = search.trim().toLowerCase();
+            const list = [...sessions]
+              .filter((s) => !q || titleOf(s).toLowerCase().includes(q) || s.id.toLowerCase().includes(q))
+              .sort((a, b) => (pins.includes(b.id) ? 1 : 0) - (pins.includes(a.id) ? 1 : 0));
+            if (list.length === 0) return <div className="recents-empty">{q ? "ничего не найдено" : "пусто"}</div>;
+            return list.map((s) => {
+              const pinned = pins.includes(s.id);
+              return (
+                <div
+                  key={s.id}
+                  className={`recent ${sessionRef.current === s.id ? "active" : ""} ${pinned ? "pinned" : ""}`}
+                  onClick={() => openSession(s)}
+                  title={`${s.source} · ${s.message_count} msgs`}
+                >
+                  <span className="recent-dot" data-src={s.source} />
+                  <span className="recent-title">{titleOf(s)}</span>
+                  <button className="recent-act" onClick={(e) => renameChat(s, e)} title="Переименовать">
+                    <Icon name="pencil" size={13} />
+                  </button>
+                  <button className="pin-btn" onClick={(e) => togglePin(s.id, e)} title={pinned ? "Открепить" : "Закрепить"}>
+                    <Icon name={pinned ? "pin" : "pinOff"} size={14} fill={pinned} />
+                  </button>
+                  <button className="recent-act danger" onClick={(e) => delChat(s, e)} title="Удалить">
+                    <Icon name="trash" size={13} />
+                  </button>
+                </div>
+              );
+            });
+          })()}
         </div>
         <div className="account">
           <div className="account-plan" title={sub?.email ?? ""}>
