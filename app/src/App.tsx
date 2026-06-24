@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import {
   getHealth, getAgentInfo, getSubscription, getSessions, getSessionMessages,
   ensureSession, streamChat, pickWorkspace, generateImage, getWorkspaceDiff, getSkills,
-  saveImage, openImage, applyConfig, isTauri,
+  saveImage, openImage, applyConfig, setSandbox, isTauri,
   type Health, type AgentInfo, type Subscription, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -101,6 +101,17 @@ export function App() {
       await getAgentInfo().then(setAgent); // badge reflects config immediately
     } finally {
       setTimeout(() => setRestarting(false), 9000); // backend cold-start window
+    }
+  }
+
+  async function toggleSandbox() {
+    if (restarting) return;
+    setRestarting(true);
+    try {
+      await setSandbox(!agent?.sandboxed);
+      await getAgentInfo().then(setAgent);
+    } finally {
+      setTimeout(() => setRestarting(false), 9000);
     }
   }
 
@@ -405,9 +416,9 @@ export function App() {
           </button>
           <button
             className={`sb-item sb-btn ${agent?.sandboxed ? "good" : ""}`}
-            onClick={() => toggleRuntime({ "terminal.backend": agent?.sandboxed ? "local" : "docker" })}
+            onClick={toggleSandbox}
             disabled={restarting}
-            title="Клик: host ↔ docker sandbox (рестарт backend)"
+            title="Клик: host ↔ Seatbelt sandbox (рестарт backend)"
           >
             <Icon name="box" size={13} /> {restarting ? "рестарт…" : agent?.sandboxed ? "sandbox" : "host"}
           </button>

@@ -81,6 +81,14 @@ export async function applyConfig(updates: Record<string, string>): Promise<void
   await c.invoke("restart_backend");
 }
 
+/** Toggle the Seatbelt sandbox + restart gateway. Tauri-only. */
+export async function setSandbox(on: boolean): Promise<void> {
+  if (!isTauri) return;
+  const c = await core();
+  await c.invoke("set_sandbox", { on });
+  await c.invoke("restart_backend");
+}
+
 export interface DiffFile { path: string; status: string; patch: string }
 
 /** Unified diff of the agent working dir (git). Empty if not a repo / no changes. Tauri-only. */

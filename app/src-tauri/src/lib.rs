@@ -105,6 +105,49 @@ fn hermes_launcher() -> Option<String> {
     Some("hermes".to_string())
 }
 
+/// Marker file: presence with "1" means the gateway runs under the Seatbelt sandbox.
+fn sandbox_marker() -> std::path::PathBuf {
+    hermes_home().join(".nd-sandbox")
+}
+fn sandbox_enabled() -> bool {
+    std::fs::read_to_string(sandbox_marker())
+        .map(|s| s.trim() == "1")
+        .unwrap_or(false)
+}
+
+/// Generate a macOS Seatbelt (sandbox-exec) profile: full read/network/exec,
+/// but file-writes confined to the workspace, ~/.hermes, caches and temp.
+fn write_seatbelt_profile(workspace: &str) -> std::path::PathBuf {
+    let hh = hermes_home();
+    let home = home();
+    let profile = format!(
+        "(version 1)\n\
+         (allow default)\n\
+         (deny file-write*)\n\
+         (allow file-write*\n\
+         \x20 (subpath \"{ws}\")\n\
+         \x20 (subpath \"{hh}\")\n\
+         \x20 (subpath \"/tmp\")\n\
+         \x20 (subpath \"/private/tmp\")\n\
+         \x20 (subpath \"/private/var/folders\")\n\
+         \x20 (subpath \"{home}/Library/Caches\")\n\
+         \x20 (subpath \"{home}/.cache\")\n\
+         \x20 (subpath \"/dev\"))\n",
+        ws = workspace,
+        hh = hh.to_string_lossy(),
+        home = home.to_string_lossy(),
+    );
+    let path = hh.join(".nd-sandbox.sb");
+    let _ = std::fs::write(&path, profile);
+    path
+}
+
+/// Toggle the Seatbelt sandbox marker (takes effect on next gateway start).
+#[tauri::command]
+fn set_sandbox(on: bool) -> Result<(), String> {
+    std::fs::write(sandbox_marker(), if on { "1" } else { "0" }).map_err(|e| e.to_string())
+}
+
 fn ensure_backend(backend: &Backend, cfg: &Config) {
     if tauri::async_runtime::block_on(fetch_health()).is_some() {
         eprintln!("[nd] reusing already-running Hermes backend on {HERMES_BASE}");
@@ -122,9 +165,22 @@ fn ensure_backend(backend: &Backend, cfg: &Config) {
         Ok(f) => (Stdio::from(f.try_clone().unwrap()), Stdio::from(f)),
         Err(_) => (Stdio::null(), Stdio::null()),
     };
-    eprintln!("[nd] starting Hermes gateway via {launcher} (cwd={})", cfg.workspace);
-    match Command::new(&launcher)
-        .arg("gateway")
+    let sandboxed = sandbox_enabled();
+    eprintln!(
+        "[nd] starting Hermes gateway via {launcher} (cwd={}, sandbox={sandboxed})",
+        cfg.workspace
+    );
+    let mut cmd = if sandboxed {
+        let profile = write_seatbelt_profile(&cfg.workspace);
+        let mut c = Command::new("sandbox-exec");
+        c.arg("-f").arg(&profile).arg(&launcher).arg("gateway");
+        c
+    } else {
+        let mut c = Command::new(&launcher);
+        c.arg("gateway");
+        c
+    };
+    match cmd
         .current_dir(&cfg.workspace)
         .stdin(Stdio::null())
         .stdout(out)
@@ -168,7 +224,7 @@ fn agent_info(ws: State<'_, WorkspaceState>, config: State<'_, Config>) -> Agent
     let auto_accept = cfg
         .lines()
         .any(|l| l.trim_start().starts_with("hooks_auto_accept:") && l.contains("true"));
-    let sandboxed = read_yaml_field("terminal", "backend").as_deref() == Some("docker");
+    let sandboxed = sandbox_enabled();
     AgentInfo {
         workspace: ws.0.lock().unwrap().clone(),
         home: config.home.clone(),
@@ -654,6 +710,7 @@ pub fn run() {
             save_image,
             open_image,
             set_config,
+            set_sandbox,
             restart_backend,
             create_session,
             chat_stream
