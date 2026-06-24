@@ -412,10 +412,17 @@ fn restart_backend(backend: State<'_, Backend>, config: State<'_, Config>) -> Re
     if let Some(mut c) = backend.child.lock().unwrap().take() {
         let _ = c.kill();
     }
-    let _ = std::process::Command::new("pkill")
-        .args(["-f", "hermes gateway"])
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(1800));
+    // Kill any gateway and WAIT until :8642 is actually down — otherwise
+    // ensure_backend would reuse the survivor and skip the fresh (sandboxed) spawn.
+    for _ in 0..30 {
+        let _ = std::process::Command::new("pkill")
+            .args(["-f", "hermes gateway"])
+            .status();
+        if tauri::async_runtime::block_on(fetch_health()).is_none() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(200));
+    }
     ensure_backend(backend.inner(), config.inner());
     Ok(())
 }
@@ -469,6 +476,7 @@ async fn subscription(config: State<'_, Config>) -> Result<serde_json::Value, St
         "models": json["models"].as_array().map(|a| a.len()).unwrap_or(0),
         "model": active_model,
         "ctx": ctx,
+        "model_list": json["models"],
     }))
 }
 

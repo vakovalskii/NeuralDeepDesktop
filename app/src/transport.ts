@@ -21,6 +21,7 @@ export interface Subscription {
   models?: number;
   model?: string;
   ctx?: number;
+  model_list?: { id: string; mode?: string; ctx?: number }[];
 }
 export interface Gate { used: number; limit: number; pct: number; reset_in_sec: number; window: string }
 export interface Usage {

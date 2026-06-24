@@ -105,6 +105,17 @@ export function App() {
     }
   }
 
+  async function changeModel(id: string) {
+    if (restarting || !id || id === sub?.model) return;
+    setRestarting(true);
+    try {
+      await applyConfig({ "model.default": id });
+      await getSubscription().then(setSub);
+    } finally {
+      setTimeout(() => setRestarting(false), 9000);
+    }
+  }
+
   async function toggleSandbox() {
     if (restarting) return;
     setRestarting(true);
@@ -331,6 +342,23 @@ export function App() {
       {/* Main */}
       <main className="main">
         <header className="topbar">
+          <div className="topbar-left">
+            <Icon name="chevron" size={13} className="model-caret" />
+            <select
+              className="model-select"
+              value={sub?.model ?? ""}
+              onChange={(e) => changeModel(e.target.value)}
+              disabled={restarting || !sub?.model_list?.length}
+              title="Модель (рестарт backend ~9с)"
+            >
+              {!sub?.model && <option value="">модель…</option>}
+              {sub?.model_list?.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.id}{m.ctx ? ` · ${Math.round(m.ctx / 1000)}k` : ""}
+                </option>
+              ))}
+            </select>
+          </div>
           <div className={`engine ${online ? "ok" : "down"}`}>
             <span className="dot" />
             Hermes {health?.version ? `v${health.version}` : ""} {online ? "online" : "offline"} → hub
