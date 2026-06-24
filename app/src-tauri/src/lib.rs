@@ -183,6 +183,10 @@ fn ensure_backend(backend: &Backend, cfg: &Config) {
         eprintln!("[nd] could not locate the `hermes` launcher");
         return;
     };
+    // We only get here when :8642 is down, so any pidfile is stale (a killed/zombie
+    // gateway). Clear it so `hermes gateway` doesn't refuse with "already running".
+    let _ = std::fs::remove_file(hermes_home().join("gateway.pid"));
+    let _ = std::fs::remove_file(hermes_home().join("gateway.lock"));
     let log = std::fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -960,9 +964,27 @@ fn current_hub_key() -> String {
     String::new()
 }
 
+/// Enable the api_server platform (binds the loopback HTTP API on :8642). The
+/// installer's default config leaves `platforms:` commented out, so the gateway
+/// would only run messaging/cron and never serve :8642.
+fn ensure_api_server() {
+    let cfg_path = hermes_home().join("config.yaml");
+    let txt = std::fs::read_to_string(&cfg_path).unwrap_or_default();
+    if txt.lines().any(|l| l.starts_with("platforms:")) {
+        return; // already configured
+    }
+    let mut new = txt;
+    if !new.is_empty() && !new.ends_with('\n') {
+        new.push('\n');
+    }
+    new.push_str("\nplatforms:\n  api_server:\n    enabled: true\n    port: 8642\n");
+    let _ = std::fs::write(&cfg_path, new);
+}
+
 /// Point the freshly-installed config at the hub (empty key) + set a loopback key.
 fn write_hub_config(hub_key: &str) {
     set_model_block(hub_key);
+    ensure_api_server();
     let env_path = hermes_home().join(".env");
     let mut env_txt = std::fs::read_to_string(&env_path).unwrap_or_default();
     if !env_txt.is_empty() && !env_txt.ends_with('\n') {
