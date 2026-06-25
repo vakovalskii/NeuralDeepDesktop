@@ -8,7 +8,8 @@
 //   * expose the agent working dir and the hub subscription/tariff status
 
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use futures_util::StreamExt;
 use serde::Serialize;
@@ -546,55 +547,109 @@ fn copy_text(text: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Holds the current `afplay` child so playback can be stopped.
+/// Generation counter: each speak/stop bumps it so a running playback thread
+/// knows to stop. Hub TTS is slow (~60ms/char), so a long answer is chunked by
+/// sentence and synthesized+played piece by piece — first audio in a few seconds
+/// instead of waiting ~90s (which also blew the old single-request timeout).
 #[derive(Default)]
-struct Tts(Mutex<Option<Child>>);
+struct Tts(Arc<AtomicU64>);
 
-/// Speak text via the hub's neural TTS (vibevoice, natural Russian) and play it
-/// with `afplay`. Falls back to nothing on error — the UI just won't speak.
-#[tauri::command]
-async fn speak(text: String, voice: Option<String>, tts: State<'_, Tts>) -> Result<(), String> {
-    // stop any current playback first
-    {
-        if let Some(mut c) = tts.0.lock().unwrap().take() {
-            let _ = c.kill();
-        }
+/// Strip markdown so the voice doesn't read "звёздочка" / "решётка".
+fn strip_markdown(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for line in s.lines() {
+        let l = line.trim_start_matches(|c: char| matches!(c, '#' | '-' | '*' | '>' | ' ' | '\t'));
+        out.push_str(l);
+        out.push('\n');
     }
+    out.chars().filter(|c| !matches!(c, '*' | '`' | '#' | '_' | '|')).collect()
+}
+
+/// Split text into ≤`max`-char chunks at sentence boundaries.
+fn chunk_text(s: &str, max: usize) -> Vec<String> {
+    let mut chunks = Vec::new();
+    let mut cur = String::new();
+    for sent in s.split_inclusive(|c: char| matches!(c, '.' | '!' | '?' | '\n' | ';' | ':')) {
+        // keep the first chunk short so audio starts in ~3s, not ~9s
+        let limit = if chunks.is_empty() { 60 } else { max };
+        if cur.chars().count() + sent.chars().count() > limit && !cur.trim().is_empty() {
+            chunks.push(cur.trim().to_string());
+            cur.clear();
+        }
+        cur.push_str(sent);
+    }
+    if !cur.trim().is_empty() {
+        chunks.push(cur.trim().to_string());
+    }
+    chunks.into_iter().filter(|c| c.chars().any(|ch| ch.is_alphanumeric())).collect()
+}
+
+/// Speak text via the hub's neural TTS (vibevoice + voice), streaming by chunk.
+#[tauri::command]
+fn speak(text: String, voice: Option<String>, tts: State<'_, Tts>) -> Result<(), String> {
+    let gen = tts.0.clone();
+    let g = gen.fetch_add(1, Ordering::SeqCst) + 1; // invalidates any running thread
     let _ = Command::new("pkill").arg("-x").arg("afplay").status();
 
-    // hub TTS: model=vibevoice, voice from /v1/audio/voices (vivian/serena/dylan/…)
     let v = voice.unwrap_or_else(|| "serena".into());
-    let body = serde_json::json!({ "model": "vibevoice", "input": text, "voice": v });
-    let resp = reqwest::Client::new()
-        .post(format!("{HUB_BASE}/audio/speech"))
-        .header("Authorization", format!("Bearer {}", current_hub_key()))
-        .json(&body)
-        .timeout(std::time::Duration::from_secs(60))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    if !resp.status().is_success() {
-        return Err(format!("tts http {}", resp.status()));
+    let key = current_hub_key();
+    let chunks = chunk_text(&strip_markdown(&text), 180);
+    if chunks.is_empty() {
+        return Ok(());
     }
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
-    let path = std::env::temp_dir().join("nd-tts.wav");
-    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
 
-    let child = Command::new("afplay")
-        .arg(&path)
-        .stdin(Stdio::null())
-        .spawn()
-        .map_err(|e| e.to_string())?;
-    *tts.0.lock().unwrap() = Some(child);
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::new();
+        for (i, chunk) in chunks.into_iter().enumerate() {
+            if gen.load(Ordering::SeqCst) != g {
+                break;
+            }
+            let body = serde_json::json!({ "model": "vibevoice", "input": chunk, "voice": v });
+            let bytes = match client
+                .post(format!("{HUB_BASE}/audio/speech"))
+                .header("Authorization", format!("Bearer {key}"))
+                .json(&body)
+                .timeout(std::time::Duration::from_secs(120))
+                .send()
+            {
+                Ok(r) if r.status().is_success() => match r.bytes() {
+                    Ok(b) => b,
+                    Err(_) => continue,
+                },
+                _ => continue,
+            };
+            if gen.load(Ordering::SeqCst) != g {
+                break;
+            }
+            let path = std::env::temp_dir().join(format!("nd-tts-{i}.wav"));
+            if std::fs::write(&path, &bytes).is_err() {
+                continue;
+            }
+            let mut child = match Command::new("afplay").arg(&path).stdin(Stdio::null()).spawn() {
+                Ok(c) => c,
+                Err(_) => continue,
+            };
+            // wait for this chunk to finish, but bail immediately if interrupted
+            loop {
+                if gen.load(Ordering::SeqCst) != g {
+                    let _ = child.kill();
+                    return;
+                }
+                match child.try_wait() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => std::thread::sleep(std::time::Duration::from_millis(80)),
+                    Err(_) => break,
+                }
+            }
+        }
+    });
     Ok(())
 }
 
 /// Stop any in-progress speech.
 #[tauri::command]
 fn stop_speak(tts: State<'_, Tts>) -> Result<(), String> {
-    if let Some(mut c) = tts.0.lock().unwrap().take() {
-        let _ = c.kill();
-    }
+    tts.0.fetch_add(1, Ordering::SeqCst); // make the running thread bail
     let _ = Command::new("pkill").arg("-x").arg("afplay").status();
     Ok(())
 }
