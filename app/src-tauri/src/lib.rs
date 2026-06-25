@@ -957,7 +957,7 @@ enum ProvisionEvent {
 fn set_model_block(hub_key: &str) {
     let cfg_path = hermes_home().join("config.yaml");
     let model_block = format!(
-        "model:\n  default: qwen3.6-35b-a3b-noreason\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
+        "model:\n  default: qwen3.6-35b-a3b-noreason\n  context_length: 131072\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
     );
     let txt = std::fs::read_to_string(&cfg_path).unwrap_or_default();
     let lines: Vec<&str> = txt.lines().collect();
