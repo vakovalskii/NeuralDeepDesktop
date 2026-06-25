@@ -201,7 +201,7 @@ export function App() {
     }
   }
 
-  useEffect(() => {
+  function loadData() {
     getHealth().then(setHealth);
     getAgentInfo().then(setAgent);
     getSubscription().then(setSub);
@@ -209,6 +209,10 @@ export function App() {
     getSkills().then(setSkills);
     getWorkspaceDiff().then(setDiffs);
     refreshSessions();
+  }
+
+  useEffect(() => {
+    loadData();
     const id = setInterval(() => getHealth().then(setHealth), 5000);
     return () => clearInterval(id);
   }, []);
@@ -261,6 +265,9 @@ export function App() {
     setKeyBusy(false);
     setKeyInput("");
     setBoot("ready");
+    // re-fetch with the new key in place (the mount-time fetch ran before sign-in).
+    loadData();
+    setTimeout(loadData, 4000); // and again once the restarted gateway is up
   }
 
   async function submitKey() {
