@@ -1,7 +1,7 @@
 {
   "name": "neural-deep-desktop",
   "private": true,
-  "version": "0.0.10",
+  "version": "0.0.11",
   "type": "module",
   "description": "Neural Deep Desktop — thin wrapper over the Hermes harness, routed to the NeuralDeep hub.",
   "scripts": {
