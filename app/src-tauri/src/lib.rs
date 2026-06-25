@@ -1086,10 +1086,34 @@ fn ensure_api_server() {
     let _ = std::fs::write(&cfg_path, new);
 }
 
+/// Trim the api_server tool set to a lean chat profile so a fresh install sends
+/// ~6k input tokens instead of ~16.5k (28 tool schemas dominate the prefill).
+/// The heavy agent toolsets stay one click away in the in-app tools menu.
+fn set_lean_tools() {
+    let Some(launcher) = hermes_launcher() else {
+        return;
+    };
+    let heavy = [
+        "browser", "terminal", "file", "code_execution", "computer_use", "vision",
+        "delegation", "cronjob", "session_search", "video", "video_gen",
+    ];
+    for t in heavy {
+        let _ = Command::new(&launcher)
+            .arg("tools")
+            .arg("disable")
+            .arg(t)
+            .arg("--platform")
+            .arg("api_server")
+            .env("HERMES_HOME", hermes_home())
+            .output();
+    }
+}
+
 /// Point the freshly-installed config at the hub (empty key) + set a loopback key.
 fn write_hub_config(hub_key: &str) {
     set_model_block(hub_key);
     ensure_api_server();
+    set_lean_tools();
     let env_path = hermes_home().join(".env");
     let mut env_txt = std::fs::read_to_string(&env_path).unwrap_or_default();
     if !env_txt.is_empty() && !env_txt.ends_with('\n') {
