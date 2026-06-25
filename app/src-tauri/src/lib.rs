@@ -553,7 +553,7 @@ struct Tts(Mutex<Option<Child>>);
 /// Speak text via the hub's neural TTS (vibevoice, natural Russian) and play it
 /// with `afplay`. Falls back to nothing on error — the UI just won't speak.
 #[tauri::command]
-async fn speak(text: String, model: Option<String>, tts: State<'_, Tts>) -> Result<(), String> {
+async fn speak(text: String, voice: Option<String>, tts: State<'_, Tts>) -> Result<(), String> {
     // stop any current playback first
     {
         if let Some(mut c) = tts.0.lock().unwrap().take() {
@@ -562,8 +562,9 @@ async fn speak(text: String, model: Option<String>, tts: State<'_, Tts>) -> Resu
     }
     let _ = Command::new("pkill").arg("-x").arg("afplay").status();
 
-    let voice = model.unwrap_or_else(|| "vibevoice".into());
-    let body = serde_json::json!({ "model": voice, "input": text });
+    // hub TTS: model=vibevoice, voice from /v1/audio/voices (vivian/serena/dylan/…)
+    let v = voice.unwrap_or_else(|| "serena".into());
+    let body = serde_json::json!({ "model": "vibevoice", "input": text, "voice": v });
     let resp = reqwest::Client::new()
         .post(format!("{HUB_BASE}/audio/speech"))
         .header("Authorization", format!("Bearer {}", current_hub_key()))

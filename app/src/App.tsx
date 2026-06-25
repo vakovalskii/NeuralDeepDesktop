@@ -94,7 +94,7 @@ export function App() {
   const [showTools, setShowTools] = useState(false);
   const [tools, setTools] = useState<ToolRow[]>([]);
   const [toolsDirty, setToolsDirty] = useState(false);
-  const [ttsVoice, setTtsVoice] = useState<string>(() => localStorage.getItem("nd.ttsVoice") || "vibevoice");
+  const [ttsVoice, setTtsVoice] = useState<string>(() => localStorage.getItem("nd.ttsVoice") || "serena");
   const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "login" | "ready">("checking");
   const [provStage, setProvStage] = useState("download");
   const [provLog, setProvLog] = useState<string[]>([]);
@@ -1011,7 +1011,7 @@ export function App() {
             <div className="voice-row">
               <span className="voice-k"><Icon name="volume" size={14} /> Голос озвучки</span>
               <select className="voice-select" value={ttsVoice} onChange={(e) => pickVoice(e.target.value)} title="При выборе — короткое превью">
-                {["vibevoice", "t-tech", "salute", "yandex-tts", "gpt-sovits", "fish", "index-tts"].map((v) => (
+                {["serena", "vivian", "ono_anna", "sohee", "dylan", "ryan", "aiden", "uncle_fu"].map((v) => (
                   <option key={v} value={v}>{v}</option>
                 ))}
               </select>

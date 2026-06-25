@@ -57,8 +57,8 @@ export async function getHealth(): Promise<Health | null> {
 }
 
 /** Speak text aloud via the macOS `say` engine (Milena for Russian). Tauri-only. */
-export async function speak(text: string, model?: string): Promise<void> {
-  if (isTauri) await (await core()).invoke("speak", { text, model: model ?? null });
+export async function speak(text: string, voice?: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("speak", { text, voice: voice ?? null });
 }
 export async function stopSpeak(): Promise<void> {
   if (isTauri) await (await core()).invoke("stop_speak");
