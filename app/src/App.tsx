@@ -7,7 +7,8 @@ import {
   backendStatus, provision, restartApp,
   hasHubKey, setHubKey, openUrl, deviceLogin, restartBackend,
   speak, stopSpeak, warmup, transcribe, isTauri,
-  type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
+  listTools, setTool,
+  type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow, type ToolRow,
 } from "./transport";
 import { Md } from "./Md";
 import { Icon } from "./Icon";
@@ -90,6 +91,10 @@ export function App() {
   const [speaking, setSpeaking] = useState<number | null>(null);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
+  const [showTools, setShowTools] = useState(false);
+  const [tools, setTools] = useState<ToolRow[]>([]);
+  const [toolsDirty, setToolsDirty] = useState(false);
+  const [ttsVoice, setTtsVoice] = useState<string>(() => localStorage.getItem("nd.ttsVoice") || "vibevoice");
   const [boot, setBoot] = useState<"checking" | "needs" | "provisioning" | "login" | "ready">("checking");
   const [provStage, setProvStage] = useState("download");
   const [provLog, setProvLog] = useState<string[]>([]);
@@ -333,7 +338,39 @@ export function App() {
     if (speaking === i) { stopSpeak(); setSpeaking(null); return; }
     stopSpeak();
     setSpeaking(i);
-    try { await speak(text); } catch { setSpeaking(null); }
+    try { await speak(text, ttsVoice); } catch { setSpeaking(null); }
+  }
+
+  function pickVoice(v: string) {
+    setTtsVoice(v);
+    localStorage.setItem("nd.ttsVoice", v);
+    stopSpeak();
+    speak("Привет! Так звучит этот голос.", v).catch(() => {});
+  }
+
+  async function openTools() {
+    setShowTools(true);
+    setToolsDirty(false);
+    setTools(await listTools());
+  }
+
+  async function toggleTool(name: string, enabled: boolean) {
+    setTools((ts) => ts.map((t) => (t.name === name ? { ...t, enabled } : t)));
+    try {
+      await setTool(name, enabled);
+      setToolsDirty(true);
+    } catch {
+      setTools((ts) => ts.map((t) => (t.name === name ? { ...t, enabled: !enabled } : t)));
+    }
+  }
+
+  async function applyTools() {
+    setShowTools(false);
+    if (!toolsDirty) return;
+    setToolsDirty(false);
+    setRestarting(true);
+    try { await restartBackend(); } catch { /* gateway will retry */ }
+    setTimeout(() => { setRestarting(false); loadData(); }, 9000);
   }
 
   function drawWave() {
@@ -746,6 +783,9 @@ export function App() {
             <input type="checkbox" checked={showReasoning} onChange={(e) => setShowReasoning(e.target.checked)} />
             reasoning
           </label>
+          <button className="tools-btn" onClick={openTools} disabled={!isTauri} title="Инструменты агента (влияют на скорость)">
+            <Icon name="sliders" size={14} /> инструменты
+          </button>
         </div>
       </aside>
 
@@ -952,6 +992,44 @@ export function App() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal: agent tools — each enabled toolset adds JSON schemas to every prompt */}
+      {showTools && (
+        <div className="modal-overlay" onClick={applyTools}>
+          <div className="modal tools-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="tools-head">
+              <div className="modal-title">Инструменты агента</div>
+              <button className="icon-btn" onClick={applyTools} title="Закрыть"><Icon name="x" size={16} /></button>
+            </div>
+            <div className="modal-text">
+              Каждый включённый набор шлёт свои JSON-схемы в КАЖДЫЙ запрос → больше префил и задержка.
+              Выключи лишнее для скорости. Сейчас включено {tools.filter((t) => t.enabled).length} из {tools.length}.
+            </div>
+            <div className="voice-row">
+              <span className="voice-k"><Icon name="volume" size={14} /> Голос озвучки</span>
+              <select className="voice-select" value={ttsVoice} onChange={(e) => pickVoice(e.target.value)} title="При выборе — короткое превью">
+                {["vibevoice", "t-tech", "salute", "yandex-tts", "gpt-sovits", "fish", "index-tts"].map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div className="tools-list">
+              {tools.length === 0 && <div className="recents-empty">загрузка…</div>}
+              {tools.map((t) => (
+                <label key={t.name} className={`tool-row ${t.enabled ? "on" : ""}`}>
+                  <input type="checkbox" checked={t.enabled} onChange={(e) => toggleTool(t.name, e.target.checked)} />
+                  <span className="tool-name">{t.name}</span>
+                  <span className="tool-label">{t.label}</span>
+                </label>
+              ))}
+            </div>
+            <div className="modal-actions">
+              <span className="tools-hint">{toolsDirty ? "при закрытии — рестарт backend (~9с)" : ""}</span>
+              <button className="modal-btn primary" onClick={applyTools}>{toolsDirty ? "Применить и перезапустить" : "Закрыть"}</button>
+            </div>
           </div>
         </div>
       )}

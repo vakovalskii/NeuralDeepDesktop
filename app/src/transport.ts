@@ -57,8 +57,8 @@ export async function getHealth(): Promise<Health | null> {
 }
 
 /** Speak text aloud via the macOS `say` engine (Milena for Russian). Tauri-only. */
-export async function speak(text: string): Promise<void> {
-  if (isTauri) await (await core()).invoke("speak", { text });
+export async function speak(text: string, model?: string): Promise<void> {
+  if (isTauri) await (await core()).invoke("speak", { text, model: model ?? null });
 }
 export async function stopSpeak(): Promise<void> {
   if (isTauri) await (await core()).invoke("stop_speak");
@@ -66,6 +66,17 @@ export async function stopSpeak(): Promise<void> {
 
 export async function warmup(): Promise<void> {
   if (isTauri) await (await core()).invoke("warmup");
+}
+
+export type ToolRow = { name: string; label: string; enabled: boolean };
+
+export async function listTools(): Promise<ToolRow[]> {
+  if (!isTauri) return [];
+  try { return await (await core()).invoke("list_tools"); } catch { return []; }
+}
+
+export async function setTool(name: string, enabled: boolean): Promise<void> {
+  if (isTauri) await (await core()).invoke("set_tool", { name, enabled });
 }
 
 /** Transcribe a recorded audio data: URL via the hub Whisper endpoint. Tauri-only. */

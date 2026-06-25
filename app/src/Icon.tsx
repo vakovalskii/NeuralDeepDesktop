@@ -5,7 +5,7 @@ type Name =
   | "plus" | "folder" | "send" | "spark" | "image" | "check"
   | "brain" | "puzzle" | "pin" | "pinOff" | "tool" | "alert"
   | "search" | "chevron" | "dot" | "shield" | "box" | "gauge" | "pencil" | "trash" | "copy"
-  | "mic" | "volume" | "stop";
+  | "mic" | "volume" | "stop" | "sliders" | "x";
 
 const P: Record<Name, JSX.Element> = {
   plus: <><path d="M12 5v14" /><path d="M5 12h14" /></>,
@@ -32,6 +32,8 @@ const P: Record<Name, JSX.Element> = {
   mic: <><rect x="9" y="2.5" width="6" height="11" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0" /><path d="M12 17.5V21" /></>,
   volume: <><path d="M11 5 6 9H3v6h3l5 4z" /><path d="M16 9a3.5 3.5 0 0 1 0 6" /><path d="M19 6a7 7 0 0 1 0 12" /></>,
   stop: <rect x="6" y="6" width="12" height="12" rx="2" />,
+  sliders: <><path d="M4 6h10" /><path d="M18 6h2" /><circle cx="16" cy="6" r="2" /><path d="M4 12h2" /><path d="M10 12h10" /><circle cx="8" cy="12" r="2" /><path d="M4 18h10" /><path d="M18 18h2" /><circle cx="16" cy="18" r="2" /></>,
+  x: <><path d="M6 6l12 12" /><path d="M18 6 6 18" /></>,
 };
 
 export function Icon({ name, size = 18, className, fill }: { name: Name; size?: number; className?: string; fill?: boolean }) {

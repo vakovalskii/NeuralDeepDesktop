@@ -356,6 +356,28 @@ button svg, summary svg, .tool svg, .account-v svg { vertical-align: -2px; }
 .modal-btn.danger { background: linear-gradient(180deg, #c0394f, #8a2030); color: #fff; border: none; }
 .modal-btn.danger:hover { filter: brightness(1.12); }
 
+/* tools button + modal */
+.tools-btn { display: inline-flex; align-items: center; gap: 5px; background: var(--panel-2); border: 1px solid var(--border-2);
+  color: var(--muted); border-radius: 8px; padding: 5px 9px; font-family: inherit; font-size: 12px; cursor: pointer; }
+.tools-btn:hover:not(:disabled) { color: var(--green-bright); border-color: var(--muted-2); }
+.tools-btn:disabled { opacity: .4; cursor: default; }
+.tools-modal { width: 480px; }
+.tools-head { display: flex; align-items: center; justify-content: space-between; }
+.icon-btn { background: none; border: none; color: var(--muted-2); cursor: pointer; padding: 2px; border-radius: 6px; }
+.icon-btn:hover { color: var(--text); background: rgba(255,255,255,.05); }
+.tools-list { max-height: 46vh; overflow-y: auto; margin-bottom: 12px; display: flex; flex-direction: column; gap: 2px; }
+.tool-row { display: flex; align-items: center; gap: 9px; padding: 7px 8px; border-radius: 8px; cursor: pointer; opacity: .55; }
+.tool-row.on { opacity: 1; }
+.tool-row:hover { background: rgba(255,255,255,.04); }
+.tool-row input { accent-color: var(--green); }
+.tool-name { font-size: 13px; font-weight: 600; color: var(--text); min-width: 120px; }
+.tool-label { font-size: 12px; color: var(--muted-2); }
+.tools-hint { flex: 1; font-size: 11px; color: var(--muted-2); align-self: center; }
+.voice-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0 12px; border-bottom: 1px solid var(--border); margin-bottom: 10px; }
+.voice-k { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.voice-select { background: var(--bg); border: 1px solid var(--border-2); color: var(--text); border-radius: 8px; padding: 6px 10px; font-family: inherit; font-size: 13px; cursor: pointer; outline: none; }
+.voice-select:focus { border-color: var(--green); }
+
 /* message copy action */
 .msg-actions { display: flex; align-items: center; gap: 8px; padding-left: 4px; opacity: 0; transition: opacity .12s; }
 .row:hover .msg-actions { opacity: 1; }

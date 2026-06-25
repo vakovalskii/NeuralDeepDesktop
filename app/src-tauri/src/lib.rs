@@ -553,7 +553,7 @@ struct Tts(Mutex<Option<Child>>);
 /// Speak text via the hub's neural TTS (vibevoice, natural Russian) and play it
 /// with `afplay`. Falls back to nothing on error — the UI just won't speak.
 #[tauri::command]
-async fn speak(text: String, tts: State<'_, Tts>) -> Result<(), String> {
+async fn speak(text: String, model: Option<String>, tts: State<'_, Tts>) -> Result<(), String> {
     // stop any current playback first
     {
         if let Some(mut c) = tts.0.lock().unwrap().take() {
@@ -562,7 +562,8 @@ async fn speak(text: String, tts: State<'_, Tts>) -> Result<(), String> {
     }
     let _ = Command::new("pkill").arg("-x").arg("afplay").status();
 
-    let body = serde_json::json!({ "model": "vibevoice", "input": text });
+    let voice = model.unwrap_or_else(|| "vibevoice".into());
+    let body = serde_json::json!({ "model": voice, "input": text });
     let resp = reqwest::Client::new()
         .post(format!("{HUB_BASE}/audio/speech"))
         .header("Authorization", format!("Bearer {}", current_hub_key()))
@@ -594,6 +595,66 @@ fn stop_speak(tts: State<'_, Tts>) -> Result<(), String> {
         let _ = c.kill();
     }
     let _ = Command::new("pkill").arg("-x").arg("afplay").status();
+    Ok(())
+}
+
+/// List Hermes toolsets with their enabled state. Each enabled toolset adds its
+/// JSON schemas to every request's prompt, so disabling unused ones cuts prefill.
+#[tauri::command]
+fn list_tools() -> Result<serde_json::Value, String> {
+    let Some(launcher) = hermes_launcher() else {
+        return Ok(serde_json::json!([]));
+    };
+    let out = Command::new(&launcher)
+        .arg("tools")
+        .arg("list")
+        .arg("--platform")
+        .arg("api_server") // the desktop talks to the api_server platform, not cli
+        .env("HERMES_HOME", hermes_home())
+        .output()
+        .map_err(|e| e.to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut tools = Vec::new();
+    for line in text.lines() {
+        let t = line.trim();
+        let (enabled, rest) = if let Some(r) = t.strip_prefix("✓ enabled") {
+            (true, r)
+        } else if let Some(r) = t.strip_prefix("✗ disabled") {
+            (false, r)
+        } else {
+            continue;
+        };
+        let rest = rest.trim();
+        let mut parts = rest.splitn(2, char::is_whitespace);
+        let name = parts.next().unwrap_or("").trim().to_string();
+        if name.is_empty() {
+            continue;
+        }
+        let label = parts.next().unwrap_or("").trim().to_string();
+        tools.push(serde_json::json!({ "name": name, "label": label, "enabled": enabled }));
+    }
+    Ok(serde_json::Value::Array(tools))
+}
+
+/// Enable/disable a Hermes toolset. Takes effect after a backend restart.
+#[tauri::command]
+fn set_tool(name: String, enabled: bool) -> Result<(), String> {
+    let Some(launcher) = hermes_launcher() else {
+        return Err("not provisioned".into());
+    };
+    let sub = if enabled { "enable" } else { "disable" };
+    let out = Command::new(&launcher)
+        .arg("tools")
+        .arg(sub)
+        .arg(&name)
+        .arg("--platform")
+        .arg("api_server")
+        .env("HERMES_HOME", hermes_home())
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+    }
     Ok(())
 }
 
@@ -1269,6 +1330,8 @@ pub fn run() {
             speak,
             stop_speak,
             warmup,
+            list_tools,
+            set_tool,
             transcribe,
             workspace_diff,
             generate_image,
