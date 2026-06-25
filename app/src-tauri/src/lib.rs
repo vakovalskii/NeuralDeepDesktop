@@ -546,21 +546,40 @@ fn copy_text(text: String) -> Result<(), String> {
     Ok(())
 }
 
-/// Holds the current `say` child so playback can be stopped.
+/// Holds the current `afplay` child so playback can be stopped.
 #[derive(Default)]
 struct Tts(Mutex<Option<Child>>);
 
-/// Speak text via the macOS `say` engine — Milena (ru) for Cyrillic, else Samantha.
+/// Speak text via the hub's neural TTS (vibevoice, natural Russian) and play it
+/// with `afplay`. Falls back to nothing on error — the UI just won't speak.
 #[tauri::command]
-fn speak(text: String, tts: State<'_, Tts>) -> Result<(), String> {
-    if let Some(mut c) = tts.0.lock().unwrap().take() {
-        let _ = c.kill();
+async fn speak(text: String, tts: State<'_, Tts>) -> Result<(), String> {
+    // stop any current playback first
+    {
+        if let Some(mut c) = tts.0.lock().unwrap().take() {
+            let _ = c.kill();
+        }
     }
-    let cyrillic = text.chars().any(|c| ('\u{0400}'..='\u{04FF}').contains(&c));
-    let voice = if cyrillic { "Milena" } else { "Samantha" };
-    let child = Command::new("say")
-        .args(["-v", voice, "-r", "210"])
-        .arg(&text)
+    let _ = Command::new("pkill").arg("-x").arg("afplay").status();
+
+    let body = serde_json::json!({ "model": "vibevoice", "input": text });
+    let resp = reqwest::Client::new()
+        .post(format!("{HUB_BASE}/audio/speech"))
+        .header("Authorization", format!("Bearer {}", current_hub_key()))
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(60))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !resp.status().is_success() {
+        return Err(format!("tts http {}", resp.status()));
+    }
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    let path = std::env::temp_dir().join("nd-tts.wav");
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+
+    let child = Command::new("afplay")
+        .arg(&path)
         .stdin(Stdio::null())
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -574,7 +593,31 @@ fn stop_speak(tts: State<'_, Tts>) -> Result<(), String> {
     if let Some(mut c) = tts.0.lock().unwrap().take() {
         let _ = c.kill();
     }
-    let _ = Command::new("pkill").arg("-x").arg("say").status();
+    let _ = Command::new("pkill").arg("-x").arg("afplay").status();
+    Ok(())
+}
+
+/// Pre-load the default hub model in the background so the first real message
+/// doesn't pay cold-start latency. Fire-and-forget; errors are ignored.
+#[tauri::command]
+async fn warmup() -> Result<(), String> {
+    let key = current_hub_key();
+    if key.is_empty() {
+        return Ok(());
+    }
+    let model = read_yaml_field("model", "default").unwrap_or_else(|| "qwen3.6-35b-a3b-noreason".into());
+    let body = serde_json::json!({
+        "model": model,
+        "messages": [{ "role": "user", "content": "ok" }],
+        "max_tokens": 1,
+    });
+    let _ = reqwest::Client::new()
+        .post(format!("{HUB_BASE}/chat/completions"))
+        .header("Authorization", format!("Bearer {key}"))
+        .json(&body)
+        .timeout(std::time::Duration::from_secs(45))
+        .send()
+        .await;
     Ok(())
 }
 
@@ -914,7 +957,7 @@ enum ProvisionEvent {
 fn set_model_block(hub_key: &str) {
     let cfg_path = hermes_home().join("config.yaml");
     let model_block = format!(
-        "model:\n  default: qwen3.6-35b-a3b\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
+        "model:\n  default: qwen3.6-35b-a3b-noreason\n  provider: custom\n  base_url: {HUB_BASE}\n  api_key: {hub_key}\n"
     );
     let txt = std::fs::read_to_string(&cfg_path).unwrap_or_default();
     let lines: Vec<&str> = txt.lines().collect();
@@ -1225,6 +1268,7 @@ pub fn run() {
             copy_text,
             speak,
             stop_speak,
+            warmup,
             transcribe,
             workspace_diff,
             generate_image,

@@ -64,6 +64,10 @@ export async function stopSpeak(): Promise<void> {
   if (isTauri) await (await core()).invoke("stop_speak");
 }
 
+export async function warmup(): Promise<void> {
+  if (isTauri) await (await core()).invoke("warmup");
+}
+
 /** Transcribe a recorded audio data: URL via the hub Whisper endpoint. Tauri-only. */
 export async function transcribe(audioDataUrl: string): Promise<string> {
   if (isTauri) return (await (await core()).invoke("transcribe", { audio: audioDataUrl })) as string;

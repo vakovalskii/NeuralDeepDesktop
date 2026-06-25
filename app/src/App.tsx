@@ -6,7 +6,7 @@ import {
   deleteSession, renameSession, generateTitle, copyText,
   backendStatus, provision, restartApp,
   hasHubKey, setHubKey, openUrl, deviceLogin, restartBackend,
-  speak, stopSpeak, transcribe, isTauri,
+  speak, stopSpeak, warmup, transcribe, isTauri,
   type Health, type AgentInfo, type Subscription, type Usage, type SessionRow, type DiffFile, type SkillRow,
 } from "./transport";
 import { Md } from "./Md";
@@ -209,6 +209,7 @@ export function App() {
     getSkills().then(setSkills);
     getWorkspaceDiff().then(setDiffs);
     refreshSessions();
+    warmup().catch(() => {}); // pre-load the hub model so the first reply is snappy
   }
 
   useEffect(() => {
@@ -328,11 +329,11 @@ export function App() {
     setTimeout(() => setCopied((c) => (c === i ? null : c)), 1400);
   }
 
-  function speakMsg(i: number, text: string) {
+  async function speakMsg(i: number, text: string) {
     if (speaking === i) { stopSpeak(); setSpeaking(null); return; }
     stopSpeak();
-    speak(text);
     setSpeaking(i);
+    try { await speak(text); } catch { setSpeaking(null); }
   }
 
   function drawWave() {
